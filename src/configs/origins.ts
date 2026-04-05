@@ -10,6 +10,8 @@ const localhostOrigins = [
   'http://localhost:3008',
   'http://localhost:3009',
   'http://localhost:3010',
+  'http://shresth.rdmp.in',
+  'https://shresth.rdmp.in',
 ];
 
 export default localhostOrigins;

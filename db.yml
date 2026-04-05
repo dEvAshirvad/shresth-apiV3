@@ -2,11 +2,11 @@ services:
   mongodb_container:
     image: mongo:latest
     restart: always
-    container_name: mongodb_container
+    container_name: mongodb_shresth_container
     env_file:
       - .env
     environment:
-      MONGO_INITDB_ROOT_DATABASE: clashers_academy
+      MONGO_INITDB_ROOT_DATABASE: shresth
       MONGO_INITDB_ROOT_USERNAME: root
       MONGO_INITDB_ROOT_PASSWORD: root
     ports:
@@ -17,7 +17,7 @@ services:
   redis_container:
     image: redis:latest
     restart: always
-    container_name: redis_container
+    container_name: redis_shresth_container
     env_file:
       - .env
     ports:

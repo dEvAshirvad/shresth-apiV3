@@ -55,13 +55,13 @@ const nodalSchema = new mongoose.Schema<Nodal>(
       type: String,
       required: true,
     },
+    /** Sparse unique: omit field until linked; `default: null` would index many `userId: null` and break unique (E11000). */
     userId: {
       type: mongoose.Schema.Types.ObjectId,
       ref: 'user',
       required: false,
       unique: true,
       sparse: true,
-      default: null,
     },
     memberId: {
       type: mongoose.Schema.Types.ObjectId,

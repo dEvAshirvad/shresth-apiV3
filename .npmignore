@@ -1,0 +1,7 @@
+dist
+.env
+mongodb_data_container
+node_modules
+redis_data
+pnpm-lock.yaml
+logs

@@ -1,0 +1,77 @@
+---
+description: KPI System product context — auth, onboarding, org setup, nodals/employees, periods, entries, reports (apiv2)
+alwaysApply: true
+---
+
+# KPI System — Product Requirements (PRD) — `apiv2`
+
+This backend (`/api/v1`) supports a **KPI / performance** product: organizations, departments, role-based templates, periodic **entries**, **locking**, and **read-only reports**. Better Auth handles **social sign-in** and **organizations**.
+
+## Tech stack (this repo)
+
+- **HTTP API:** Express, `/api/v1` mount.
+- **Auth:** Better Auth (`/api/auth/*`), sessions, `activeOrganizationId`, org roles (`owner`, `admin`, `nodal`, `staff`, etc.).
+- **Data:** MongoDB / Mongoose modules under `src/modules/**`.
+
+## User journeys
+
+### Authentication
+
+- Users sign in with **social providers** via **Better Auth** (session cookies).
+
+### Onboarding (all new users)
+
+- Every new user goes through **onboarding** with two paths:
+  - **Join** — list pending **organization invitations**, accept one, become a **member**.
+  - **New org** — create an organization via Better Auth, then configure **initial KPI period config**, **start** the first period, and **complete onboarding**.
+
+### Dashboard
+
+- After onboarding, the dashboard links users to **activities** (imports, templates, entries, periods, reports — role-dependent).
+
+### Operational flow (admin / nodal / staff)
+
+1. **Nodals first** — Import **nodal** candidates (`/api/v1/nodal`), send org invitations (`send-invitation-to-rest-nodals`), monitor adoption. Nodals accept invites and complete onboarding; then **`userId` / `memberId`** are linked via **`POST .../sync-from-org-members`** or **`POST .../:id/attach-user-id-and-member-id`**.
+2. **Departments** — Import departments; **`nodal_email`** resolves an existing member (same email) for **`assignedNodal`**.
+3. **Employees** — Import **employees** (staff line); same invitation + sync/attach pattern as nodals (`/api/v1/employee`).
+4. **Templates** — Created per **department role** (derived from employee / nodal **`departmentRole`**); used to validate entries.
+5. **Entries** — Users fill KPI data; options include **import** flows prefilled from employee + template metadata.
+6. **Periods** — Admins **lock** a period (no more entries); system **generates reports**. **Closed** periods are immutable snapshots; UI navigates **reports** read-only.
+
+### Organization invitations (bulk org admins)
+
+- **`GET/POST /api/v1/organization/invitations/import`** — CSV/XLSX bulk invites for org role **`admin`** only (not nodal; nodals use the **nodal** module + **`nodal`** invitation sends).
+- **`GET /api/v1/organization/invitations`** — List/filter invitations for the active org.
+
+## Domain modules (codebase map)
+
+| Area | Mount / module | Role |
+|------|------------------|------|
+| Auth & org | `/api/v1/organization`, `/api/v1/onboarding`, Better Auth | Sessions, org switch, onboarding flags |
+| Invitations (bulk admin) | `/api/v1/organization/invitations` | Bulk **`admin`** invites + list |
+| Departments | `/api/v1/departments` | CRUD, import, `nodal_email` → `assignedNodal` |
+| Nodals | `/api/v1/nodal` | CRUD, import, sync/attach, **`nodal`** invitation sends |
+| Employees | `/api/v1/employee` | CRUD, import, sync/attach, **`staff`** invitation sends |
+| Templates | `/api/v1/templates` | Role-scoped templates per department |
+| Entries | `/api/v1/entries` | Drafts, submit, imports, bulk submit |
+| Periods | `/api/v1/periods` | Config, start, lock, close, admin maintenance |
+| Reports | `/api/v1/reports` | **Read-only** aggregates after period is **closed** |
+
+## Reports API (read-only detail)
+
+Base: **`/api/v1/reports`**. Requires **`req.session.activeOrganizationId`**.
+
+| Method | Path | Purpose |
+|--------|------|---------|
+| `GET` | `/` | List **report runs** (metadata) for the org (`ReportRun`), newest first. Does **not** require period `closed`. |
+| `GET` | `/:periodId/summary` | Single run / summary for a period. Service enforces period **`closed`** (`REPORT_NOT_READY` if not). |
+| `GET` | `/:periodId/department-roles` | Per-department, per-role aggregates. Query: `departmentId?`. **`closed`** required. |
+| `GET` | `/:periodId/ranking/:scope` | Rankings: `scope` = `overall` \| `department`. Query: `departmentId?` (required for department scope), `page`, `limit`. **`closed`** required. |
+
+**Business rule:** Detail report endpoints expect the KPI period status **`closed`** (reports generated); list endpoint is for admin UI metadata.
+
+## Implementation notes for agents
+
+- Prefer **existing patterns**: Zod + `validateRequest`, `APIError`, `Respond`, org scoping via **department → organizationId** where applicable.
+- **Employee** vs **nodal** collections are parallel; invitation **`role`** differs (`staff` vs `nodal`).
+- **Sync vs attach:** `sync-from-org-members` bulk-links by **email**; `attach-user-id-and-member-id` sets explicit **`userId`** / **`memberId`** after verifying the **member** belongs to the active org.

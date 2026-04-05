@@ -1,0 +1,33 @@
+services:
+  mongodb_container:
+    image: mongo:latest
+    restart: always
+    container_name: mongodb_container
+    env_file:
+      - .env
+    environment:
+      MONGO_INITDB_ROOT_DATABASE: clashers_academy
+      MONGO_INITDB_ROOT_USERNAME: root
+      MONGO_INITDB_ROOT_PASSWORD: root
+    ports:
+      - 27017:27017
+    volumes:
+      - ./mongodb_data_container:/data/db
+
+  redis_container:
+    image: redis:latest
+    restart: always
+    container_name: redis_container
+    env_file:
+      - .env
+    ports:
+      - ${REDIS_PORT}:6379
+    environment:
+      REDIS_PASSWORD: ${REDIS_PASSWORD}
+    command: redis-server --requirepass ${REDIS_PASSWORD}
+    volumes:
+      - ./redis_data:/data
+
+volumes:
+  mongodb_data_container:
+  redis_data:

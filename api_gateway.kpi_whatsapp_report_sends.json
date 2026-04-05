@@ -1,0 +1,182 @@
+[{
+  "_id": {
+    "$oid": "69d2c4a405296a0a7bbb8815"
+  },
+  "organizationId": {
+    "$oid": "69d2bf5dfb18b19886e15160"
+  },
+  "periodId": {
+    "$oid": "69d2bf6b18e2b8fa8b8fe4a1"
+  },
+  "batchId": {
+    "$oid": "69d2c4a405296a0a7bbb8814"
+  },
+  "employeeId": {
+    "$oid": "69d2c18318e2b8fa8b8fe4a4"
+  },
+  "departmentId": {
+    "$oid": "69d2c09618e2b8fa8b8fe4a3"
+  },
+  "employeeName": "John Doe",
+  "status": "skipped",
+  "performerBucket": "top",
+  "campaignName": "(skipped)",
+  "templateParams": [],
+  "dryRun": false,
+  "skipReason": "non_staff_role",
+  "triggeredByUserId": {
+    "$oid": "69d2bf54fb18b19886e1515c"
+  },
+  "createdAt": {
+    "$date": "2026-04-05T20:23:00.535Z"
+  },
+  "updatedAt": {
+    "$date": "2026-04-05T20:23:00.535Z"
+  },
+  "__v": 0
+},
+{
+  "_id": {
+    "$oid": "69d2c4ab05296a0a7bbb881e"
+  },
+  "organizationId": {
+    "$oid": "69d2bf5dfb18b19886e15160"
+  },
+  "periodId": {
+    "$oid": "69d2bf6b18e2b8fa8b8fe4a1"
+  },
+  "batchId": {
+    "$oid": "69d2c4ab05296a0a7bbb881c"
+  },
+  "employeeId": {
+    "$oid": "69d2c18318e2b8fa8b8fe4a4"
+  },
+  "departmentId": {
+    "$oid": "69d2c09618e2b8fa8b8fe4a3"
+  },
+  "employeeName": "John Doe",
+  "status": "skipped",
+  "performerBucket": "top",
+  "campaignName": "(skipped)",
+  "templateParams": [],
+  "dryRun": false,
+  "skipReason": "non_staff_role",
+  "triggeredByUserId": {
+    "$oid": "69d2bf54fb18b19886e1515c"
+  },
+  "createdAt": {
+    "$date": "2026-04-05T20:23:07.484Z"
+  },
+  "updatedAt": {
+    "$date": "2026-04-05T20:23:07.484Z"
+  },
+  "__v": 0
+},
+{
+  "_id": {
+    "$oid": "69d2c4b605296a0a7bbb8827"
+  },
+  "organizationId": {
+    "$oid": "69d2bf5dfb18b19886e15160"
+  },
+  "periodId": {
+    "$oid": "69d2bf6b18e2b8fa8b8fe4a1"
+  },
+  "batchId": {
+    "$oid": "69d2c4b605296a0a7bbb8825"
+  },
+  "employeeId": {
+    "$oid": "69d2c18318e2b8fa8b8fe4a4"
+  },
+  "departmentId": {
+    "$oid": "69d2c09618e2b8fa8b8fe4a3"
+  },
+  "employeeName": "John Doe",
+  "status": "skipped",
+  "performerBucket": "top",
+  "campaignName": "(skipped)",
+  "templateParams": [],
+  "dryRun": true,
+  "skipReason": "non_staff_role",
+  "triggeredByUserId": {
+    "$oid": "69d2bf54fb18b19886e1515c"
+  },
+  "createdAt": {
+    "$date": "2026-04-05T20:23:18.541Z"
+  },
+  "updatedAt": {
+    "$date": "2026-04-05T20:23:18.541Z"
+  },
+  "__v": 0
+},
+{
+  "_id": {
+    "$oid": "69d2c4c005296a0a7bbb882f"
+  },
+  "organizationId": {
+    "$oid": "69d2bf5dfb18b19886e15160"
+  },
+  "periodId": {
+    "$oid": "69d2bf6b18e2b8fa8b8fe4a1"
+  },
+  "batchId": {
+    "$oid": "69d2c4c005296a0a7bbb882e"
+  },
+  "employeeId": {
+    "$oid": "69d2c18318e2b8fa8b8fe4a4"
+  },
+  "departmentId": {
+    "$oid": "69d2c09618e2b8fa8b8fe4a3"
+  },
+  "employeeName": "John Doe",
+  "status": "skipped",
+  "performerBucket": "top",
+  "campaignName": "(skipped)",
+  "templateParams": [],
+  "dryRun": false,
+  "skipReason": "non_staff_role",
+  "triggeredByUserId": {
+    "$oid": "69d2bf54fb18b19886e1515c"
+  },
+  "createdAt": {
+    "$date": "2026-04-05T20:23:28.481Z"
+  },
+  "updatedAt": {
+    "$date": "2026-04-05T20:23:28.481Z"
+  },
+  "__v": 0
+},
+{
+  "_id": {
+    "$oid": "69d2c63a05296a0a7bbb88a5"
+  },
+  "organizationId": {
+    "$oid": "69d2bf5dfb18b19886e15160"
+  },
+  "periodId": {
+    "$oid": "69d2c2ed18e2b8fa8b8fe4a6"
+  },
+  "batchId": {
+    "$oid": "69d2c63a05296a0a7bbb88a2"
+  },
+  "employeeId": {
+    "$oid": "69d2c18318e2b8fa8b8fe4a4"
+  },
+  "departmentId": {
+    "$oid": "69d2c09618e2b8fa8b8fe4a3"
+  },
+  "employeeName": "John Doe",
+  "status": "skipped",
+  "performerBucket": "top",
+  "campaignName": "(skipped)",
+  "templateParams": [],
+  "dryRun": false,
+  "skipReason": "non_staff_role",
+  "createdAt": {
+    "$date": "2026-04-05T20:29:46.017Z"
+  },
+  "updatedAt": {
+    "$date": "2026-04-05T20:29:46.017Z"
+  },
+  "__v": 0
+}]

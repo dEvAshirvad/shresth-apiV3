@@ -6,3 +6,4 @@ logs
 .env
 pnpm-lock.yaml
 .DS_Store
+graphify-out

@@ -96,6 +96,11 @@ function sanitizeHeaderTitle(s: string): string {
     .trim();
 }
 
+function normalizeDivisionOrBlock(value: unknown): string | undefined {
+  const s = String(value ?? '').trim();
+  return s ? s : undefined;
+}
+
 /** Human-readable CSV/XLSX column for KPI value; `[id]` suffix keeps import mapping stable. */
 export function formatKpiEntryImportValueHeader(
   it: { title?: string; inputType?: string; maxMarks?: number },
@@ -403,6 +408,7 @@ export class KpiEntryService {
       0
     );
 
+    const divisionOrBlock = normalizeDivisionOrBlock(input.divisionOrBlock);
     const entry = await KpiEntryModel.findOneAndUpdate(
       {
         organizationId,
@@ -418,6 +424,7 @@ export class KpiEntryService {
           templateId: input.templateId,
           employeeId: input.employeeId,
           roleSnapshot: employee.departmentRole || template.role,
+          divisionOrBlock,
           items: storedItems,
           totalMarks,
           obtainedMarks,
@@ -518,6 +525,7 @@ export class KpiEntryService {
       'name',
       'email',
       'phone',
+      'divisionOrBlock',
       ...itemHeaders,
       ...remarkHeaders,
     ];
@@ -558,6 +566,7 @@ export class KpiEntryService {
         name: (e as any).name || '',
         email: (e as any).email || '',
         phone: (e as any).phone || '',
+        divisionOrBlock: entry?.divisionOrBlock ? String(entry.divisionOrBlock) : '',
       };
 
       items.forEach((it, idx) => {
@@ -756,6 +765,9 @@ export class KpiEntryService {
         (sum, it) => sum + Number(it.awardedMarks || 0),
         0
       );
+      const divisionOrBlock = normalizeDivisionOrBlock(
+        getVal(row, 'divisionOrBlock')
+      );
 
       upsertCandidates += 1;
       ops.push({
@@ -774,6 +786,7 @@ export class KpiEntryService {
               templateId,
               employeeId,
               roleSnapshot: employee.departmentRole || (template as any).role,
+              divisionOrBlock,
               items: storedItems,
               totalMarks,
               obtainedMarks,

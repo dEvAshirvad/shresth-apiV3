@@ -22,6 +22,7 @@ type RankingRow = {
   employeeId: string;
   employeeName?: string;
   role?: string;
+  divisionOrBlock?: string;
   obtainedMarks: number;
   totalMarks: number;
 };
@@ -100,7 +101,7 @@ function generatePDFHTML(args: {
             <tr>
               <td class="rank rank-${rank}">${rank}</td>
               <td class="name">${escapeHtml(r.employeeName || String(r.employeeId))}</td>
-              <td class="division">${escapeHtml(String(r.role || 'N/A').toUpperCase())}</td>
+              <td class="division">${escapeHtml(String(r.divisionOrBlock || 'N/A'))}</td>
               <td class="score ${scoreClass}">${escapeHtml(
                 formatScore(Number(r.obtainedMarks || 0), Number(r.totalMarks || 0))
               )}</td>
@@ -117,7 +118,7 @@ function generatePDFHTML(args: {
               <tr>
                 <th style="width: 60px;">Rank</th>
                 <th>Name</th>
-                <th>Division</th>
+                <th>Division / Block</th>
                 <th style="width: 180px; text-align: right;">Score</th>
               </tr>
             </thead>
@@ -278,7 +279,7 @@ async function generatePdfBufferFallback(args: {
       doc.moveDown(0.2).font('Helvetica').fontSize(10);
       rows.forEach((r, idx) => {
         doc.text(
-          `${idx + 1}. ${r.employeeName || r.employeeId} - ${formatScore(
+          `${idx + 1}. ${r.employeeName || r.employeeId} | Division / Block: ${r.divisionOrBlock || 'N/A'} | ${formatScore(
             Number(r.obtainedMarks || 0),
             Number(r.totalMarks || 0)
           )}`
@@ -394,6 +395,9 @@ export class ReportZipService {
         employeeId: String(row.employeeId),
         employeeName: row.employeeName ? String(row.employeeName) : undefined,
         role,
+        divisionOrBlock: row.divisionOrBlock
+          ? String(row.divisionOrBlock)
+          : undefined,
         obtainedMarks: Number(row.obtainedMarks || 0),
         totalMarks: Number(row.totalMarks || 0),
       });

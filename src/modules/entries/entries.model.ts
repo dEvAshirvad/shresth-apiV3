@@ -35,6 +35,7 @@ export const zKpiEntry = z.object({
   templateId: z.string().min(1),
   employeeId: z.string().min(1),
   roleSnapshot: z.string().min(1),
+  divisionOrBlock: z.string().min(1).optional(),
   items: z.array(zKpiEntryItem).min(1),
   totalMarks: z.number().nonnegative(),
   obtainedMarks: z.number().nonnegative(),
@@ -55,6 +56,7 @@ export const zKpiEntryUpsertInput = z.object({
   templateId: z.string().min(1),
   /** optional: default to current active period */
   periodId: z.string().optional(),
+  divisionOrBlock: z.string().trim().min(1).max(150).optional(),
   items: z.array(zKpiEntryItemInput).min(1),
 });
 export type KpiEntry = z.infer<typeof zKpiEntry>;
@@ -117,6 +119,7 @@ const kpiEntrySchema = new Schema(
       index: true,
     },
     roleSnapshot: { type: String, required: true },
+    divisionOrBlock: { type: String, required: false, index: true },
     items: { type: [kpiEntryItemSchema], required: true },
     totalMarks: { type: Number, required: true, min: 0 },
     obtainedMarks: { type: Number, required: true, min: 0 },

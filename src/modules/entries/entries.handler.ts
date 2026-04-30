@@ -193,6 +193,7 @@ export class KpiEntryHandler {
       'name',
       'email',
       'phone',
+      'divisionOrBlock',
       ...itemHeaders,
       ...remarkHeaders,
     ];
@@ -211,6 +212,7 @@ export class KpiEntryHandler {
           name: (e as any).name || '',
           email: (e as any).email || '',
           phone: (e as any).phone || '',
+          divisionOrBlock: '',
         };
         itemHeaders.forEach((h) => {
           base[h] = '';

@@ -88,6 +88,7 @@ export class KpiReportService {
           obtainedMarks: { $sum: '$obtainedMarks' },
           totalMarks: { $sum: '$totalMarks' },
           role: { $first: '$roleSnapshot' },
+          divisionOrBlock: { $first: '$divisionOrBlock' },
         },
       },
       {
@@ -97,6 +98,7 @@ export class KpiReportService {
           obtainedMarks: 1,
           totalMarks: 1,
           role: 1,
+          divisionOrBlock: 1,
         },
       },
     ]);
@@ -162,6 +164,9 @@ export class KpiReportService {
           employeeId: r.employeeId,
           employeeName: employeeNameById.get(String(r.employeeId)),
           role: String(r.role || ''),
+          divisionOrBlock: r.divisionOrBlock
+            ? String(r.divisionOrBlock)
+            : undefined,
           obtainedMarks: Number(r.obtainedMarks || 0),
           totalMarks: Number(r.totalMarks || 0),
           rank: idx + 1,
@@ -184,6 +189,9 @@ export class KpiReportService {
         employeeName: employeeNameById.get(String(r.employeeId)),
         departmentId: String(r.departmentId),
         role: String(r.role || ''),
+        divisionOrBlock: r.divisionOrBlock
+          ? String(r.divisionOrBlock)
+          : undefined,
         obtainedMarks: Number(r.obtainedMarks || 0),
         totalMarks: Number(r.totalMarks || 0),
         rank: idx + 1,

@@ -13,6 +13,50 @@ import {
 } from './entries.service';
 import { EmployeeModal } from '../employee/employee.model';
 import { KpiTemplateModel } from '../templates/templates.model';
+import { DepartmentModel } from '../departments/departments.model';
+
+const NODAL_ROLES = new Set(['nodal', 'nodals']);
+
+async function getScopedDepartmentIdsForNodal(
+  organizationId: string,
+  memberId: string
+) {
+  const departments = await DepartmentModel.find({
+    organizationId,
+    assignedNodal: memberId,
+  } as any)
+    .select('_id')
+    .lean();
+  return departments.map((d: any) => String(d._id));
+}
+
+async function enforceNodalDepartmentAccess(
+  req: Request,
+  organizationId: string,
+  departmentId: string
+) {
+  const role = String(req.session?.activeOrganizationRole || '').toLowerCase();
+  if (!NODAL_ROLES.has(role)) return;
+  const memberId = String(req.session?.memberId || '');
+  if (!memberId) {
+    throw new APIError({
+      STATUS: 403,
+      TITLE: 'NODAL_MEMBER_REQUIRED',
+      MESSAGE: 'Nodal member context is missing in session',
+    });
+  }
+  const scopedDepartmentIds = await getScopedDepartmentIdsForNodal(
+    organizationId,
+    memberId
+  );
+  if (!scopedDepartmentIds.includes(String(departmentId))) {
+    throw new APIError({
+      STATUS: 403,
+      TITLE: 'NODAL_DEPARTMENT_FORBIDDEN',
+      MESSAGE: 'You can only access departments assigned to you.',
+    });
+  }
+}
 
 function sendImportLayoutDownload(
   res: Response,
@@ -99,6 +143,26 @@ export class KpiEntryHandler {
     const id = paramStr(req.params.id);
     const entry = await KpiEntryService.getEntry(id, organizationId);
     if (!entry) return Respond(res, { message: 'Entry not found' }, 404);
+
+    const role = String(req.session?.activeOrganizationRole || '').toLowerCase();
+    if (NODAL_ROLES.has(role)) {
+      const memberId = String(req.session?.memberId || '');
+      if (!memberId) {
+        throw new APIError({
+          STATUS: 403,
+          TITLE: 'NODAL_MEMBER_REQUIRED',
+          MESSAGE: 'Nodal member context is missing in session',
+        });
+      }
+      const scopedDepartmentIds = await getScopedDepartmentIdsForNodal(
+        organizationId,
+        memberId
+      );
+      if (!scopedDepartmentIds.includes(String((entry as any).departmentId || ''))) {
+        return Respond(res, { message: 'Entry not found' }, 404);
+      }
+    }
+
     return Respond(res, { entry, message: 'Entry fetched successfully' }, 200);
   }
 
@@ -108,6 +172,20 @@ export class KpiEntryHandler {
       throw new APIError({ STATUS: 400, TITLE: 'NO_ACTIVE_ORGANIZATION', MESSAGE: 'No active organization in session' });
     }
     const { page, limit, employeeId, periodId, templateId } = req.query;
+    const role = String(req.session?.activeOrganizationRole || '').toLowerCase();
+    let departmentIds: string[] | undefined;
+    if (NODAL_ROLES.has(role)) {
+      const memberId = String(req.session?.memberId || '');
+      if (!memberId) {
+        throw new APIError({
+          STATUS: 403,
+          TITLE: 'NODAL_MEMBER_REQUIRED',
+          MESSAGE: 'Nodal member context is missing in session',
+        });
+      }
+      departmentIds = await getScopedDepartmentIdsForNodal(organizationId, memberId);
+    }
+
     const result = await KpiEntryService.getEntries(
       {
         page: page ? parseInt(page as string) : 1,
@@ -115,6 +193,7 @@ export class KpiEntryHandler {
         employeeId: (employeeId as string) || undefined,
         periodId: (periodId as string) || undefined,
         templateId: (templateId as string) || undefined,
+        departmentIds,
       },
       organizationId
     );
@@ -152,6 +231,7 @@ export class KpiEntryHandler {
         MESSAGE: 'templateId and departmentId are required',
       });
     }
+    await enforceNodalDepartmentAccess(req, organizationId, departmentId);
 
     const template = await KpiTemplateModel.findById(templateId).lean();
     if (!template) {
@@ -247,6 +327,7 @@ export class KpiEntryHandler {
         MESSAGE: 'templateId and departmentId are required',
       });
     }
+    await enforceNodalDepartmentAccess(req, organizationId, departmentId);
 
     const { header, rows } = await KpiEntryService.getImportFormatExportData({
       organizationId,
@@ -278,6 +359,7 @@ export class KpiEntryHandler {
         MESSAGE: 'templateId and departmentId are required',
       });
     }
+    await enforceNodalDepartmentAccess(req, organizationId, departmentId);
     if (!req.file?.path) {
       throw new APIError({
         STATUS: 400,

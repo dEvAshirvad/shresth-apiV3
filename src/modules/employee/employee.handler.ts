@@ -8,6 +8,22 @@ import { EmployeeService } from './employee.services';
 import Respond from '@/lib/respond';
 import { paramStr } from '@/lib/param';
 import APIError from '@/configs/errors/APIError';
+import { DepartmentModel } from '../departments/departments.model';
+
+const NODAL_ROLES = new Set(['nodal', 'nodals']);
+
+async function getScopedDepartmentIdsForNodal(
+  organizationId: string,
+  memberId: string
+) {
+  const departments = await DepartmentModel.find({
+    organizationId,
+    assignedNodal: memberId,
+  } as any)
+    .select('_id')
+    .lean();
+  return departments.map((d: any) => String(d._id));
+}
 
 interface ImportedEmployeeRow {
   name: string;
@@ -71,6 +87,14 @@ export class EmployeeHandler {
 
   static async getEmployee(req: Request, res: Response) {
     try {
+      const organizationId = req.session?.activeOrganizationId;
+      if (!organizationId) {
+        throw new APIError({
+          STATUS: 400,
+          TITLE: 'NO_ACTIVE_ORGANIZATION',
+          MESSAGE: 'No active organization in session',
+        });
+      }
       const id = paramStr(req.params.id);
 
       const employee = await EmployeeService.getEmployee(id);
@@ -82,6 +106,32 @@ export class EmployeeHandler {
           },
           404
         );
+      }
+
+      const departmentObj = (employee as any).department;
+      const employeeDepartmentId = String(departmentObj?._id || departmentObj || '');
+      const employeeOrgId = String(departmentObj?.organizationId || '');
+      if (!employeeDepartmentId || employeeOrgId !== String(organizationId)) {
+        return Respond(res, { message: 'Employee not found' }, 404);
+      }
+
+      const role = String(req.session?.activeOrganizationRole || '').toLowerCase();
+      if (NODAL_ROLES.has(role)) {
+        const memberId = String(req.session?.memberId || '');
+        if (!memberId) {
+          throw new APIError({
+            STATUS: 403,
+            TITLE: 'NODAL_MEMBER_REQUIRED',
+            MESSAGE: 'Nodal member context is missing in session',
+          });
+        }
+        const scopedDepartmentIds = await getScopedDepartmentIdsForNodal(
+          organizationId,
+          memberId
+        );
+        if (!scopedDepartmentIds.includes(employeeDepartmentId)) {
+          return Respond(res, { message: 'Employee not found' }, 404);
+        }
       }
 
       Respond(
@@ -99,12 +149,35 @@ export class EmployeeHandler {
 
   static async getEmployees(req: Request, res: Response) {
     try {
+      const organizationId = req.session?.activeOrganizationId;
+      if (!organizationId) {
+        throw new APIError({
+          STATUS: 400,
+          TITLE: 'NO_ACTIVE_ORGANIZATION',
+          MESSAGE: 'No active organization in session',
+        });
+      }
       const { page, limit, search } = req.query;
+      const role = String(req.session?.activeOrganizationRole || '').toLowerCase();
+      let departmentIds: string[] | undefined;
+      if (NODAL_ROLES.has(role)) {
+        const memberId = String(req.session?.memberId || '');
+        if (!memberId) {
+          throw new APIError({
+            STATUS: 403,
+            TITLE: 'NODAL_MEMBER_REQUIRED',
+            MESSAGE: 'Nodal member context is missing in session',
+          });
+        }
+        departmentIds = await getScopedDepartmentIdsForNodal(organizationId, memberId);
+      }
 
       const filters = {
         page: page ? parseInt(page as string) : 1,
         limit: limit ? parseInt(limit as string) : 10,
         search: (search as string) || '',
+        organizationId,
+        departmentIds,
       };
 
       const result = await EmployeeService.getEmployees(filters);

@@ -68,12 +68,36 @@ export class EmployeeService {
     page = 1,
     limit = 10,
     search = '',
+    organizationId,
+    departmentIds,
   }: {
     page?: number;
     limit?: number;
     search?: string;
+    organizationId: string;
+    departmentIds?: string[];
   }) {
-    const filter: any = {};
+    const scopedDepartmentIds =
+      departmentIds ??
+      (
+        await DepartmentModel.find({ organizationId } as any)
+          .select('_id')
+          .lean()
+      ).map((d: any) => d._id);
+
+    if (!scopedDepartmentIds.length) {
+      return {
+        docs: [],
+        total: 0,
+        page,
+        limit,
+        totalPages: 0,
+        hasNextPage: false,
+        hasPreviousPage: false,
+      };
+    }
+
+    const filter: any = { department: { $in: scopedDepartmentIds } };
     if (search) {
       filter.$or = [
         { name: { $regex: search, $options: 'i' } },

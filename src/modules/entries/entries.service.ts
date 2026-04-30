@@ -925,12 +925,14 @@ export class KpiEntryService {
       employeeId,
       periodId,
       templateId,
+      departmentIds,
     }: {
       page?: number;
       limit?: number;
       employeeId?: string;
       periodId?: string;
       templateId?: string;
+      departmentIds?: string[];
     },
     organizationId: string
   ) {
@@ -938,9 +940,13 @@ export class KpiEntryService {
     if (employeeId) filter.employeeId = employeeId;
     if (periodId) filter.periodId = periodId;
     if (templateId) filter.templateId = templateId;
+    if (departmentIds) {
+      filter.departmentId = { $in: departmentIds };
+    }
 
     const [docs, total] = await Promise.all([
       KpiEntryModel.find(filter)
+        .sort({ obtainedMarks: -1, updatedAt: -1 })
         .skip((page - 1) * limit)
         .limit(limit)
         .lean(),

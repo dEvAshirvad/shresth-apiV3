@@ -14,6 +14,7 @@ import {
 import { EmployeeModal } from '../employee/employee.model';
 import { KpiTemplateModel } from '../templates/templates.model';
 import { DepartmentModel } from '../departments/departments.model';
+import { MemberModel } from '../auth/members/members.model';
 
 const NODAL_ROLES = new Set(['nodal', 'nodals']);
 
@@ -30,6 +31,20 @@ async function getScopedDepartmentIdsForNodal(
   return departments.map((d: any) => String(d._id));
 }
 
+async function getEffectiveMemberId(req: Request, organizationId: string) {
+  const sessionMemberId = String(req.session?.memberId || '');
+  if (sessionMemberId) return sessionMemberId;
+  const userId = String(req.session?.userId || req.user?.id || '');
+  if (!userId) return '';
+  const member = await MemberModel.findOne({
+    organizationId,
+    userId,
+  } as any)
+    .select('_id')
+    .lean();
+  return member ? String((member as any)._id) : '';
+}
+
 async function enforceNodalDepartmentAccess(
   req: Request,
   organizationId: string,
@@ -37,7 +52,7 @@ async function enforceNodalDepartmentAccess(
 ) {
   const role = String(req.session?.activeOrganizationRole || '').toLowerCase();
   if (!NODAL_ROLES.has(role)) return;
-  const memberId = String(req.session?.memberId || '');
+  const memberId = await getEffectiveMemberId(req, organizationId);
   if (!memberId) {
     throw new APIError({
       STATUS: 403,
@@ -146,7 +161,7 @@ export class KpiEntryHandler {
 
     const role = String(req.session?.activeOrganizationRole || '').toLowerCase();
     if (NODAL_ROLES.has(role)) {
-      const memberId = String(req.session?.memberId || '');
+      const memberId = await getEffectiveMemberId(req, organizationId);
       if (!memberId) {
         throw new APIError({
           STATUS: 403,
@@ -175,7 +190,7 @@ export class KpiEntryHandler {
     const role = String(req.session?.activeOrganizationRole || '').toLowerCase();
     let departmentIds: string[] | undefined;
     if (NODAL_ROLES.has(role)) {
-      const memberId = String(req.session?.memberId || '');
+      const memberId = await getEffectiveMemberId(req, organizationId);
       if (!memberId) {
         throw new APIError({
           STATUS: 403,

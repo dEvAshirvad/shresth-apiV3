@@ -9,6 +9,7 @@ import Respond from '@/lib/respond';
 import { paramStr } from '@/lib/param';
 import APIError from '@/configs/errors/APIError';
 import { DepartmentModel } from '../departments/departments.model';
+import { MemberModel } from '../auth/members/members.model';
 
 const NODAL_ROLES = new Set(['nodal', 'nodals']);
 
@@ -23,6 +24,20 @@ async function getScopedDepartmentIdsForNodal(
     .select('_id')
     .lean();
   return departments.map((d: any) => String(d._id));
+}
+
+async function getEffectiveMemberId(req: Request, organizationId: string) {
+  const sessionMemberId = String(req.session?.memberId || '');
+  if (sessionMemberId) return sessionMemberId;
+  const userId = String(req.session?.userId || req.user?.id || '');
+  if (!userId) return '';
+  const member = await MemberModel.findOne({
+    organizationId,
+    userId,
+  } as any)
+    .select('_id')
+    .lean();
+  return member ? String((member as any)._id) : '';
 }
 
 interface ImportedEmployeeRow {
@@ -117,7 +132,7 @@ export class EmployeeHandler {
 
       const role = String(req.session?.activeOrganizationRole || '').toLowerCase();
       if (NODAL_ROLES.has(role)) {
-        const memberId = String(req.session?.memberId || '');
+        const memberId = await getEffectiveMemberId(req, organizationId);
         if (!memberId) {
           throw new APIError({
             STATUS: 403,
@@ -161,7 +176,7 @@ export class EmployeeHandler {
       const role = String(req.session?.activeOrganizationRole || '').toLowerCase();
       let departmentIds: string[] | undefined;
       if (NODAL_ROLES.has(role)) {
-        const memberId = String(req.session?.memberId || '');
+        const memberId = await getEffectiveMemberId(req, organizationId);
         if (!memberId) {
           throw new APIError({
             STATUS: 403,

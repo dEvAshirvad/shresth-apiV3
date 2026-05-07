@@ -13,7 +13,9 @@ connectDB()
   })
   .catch((err) => {
     logger.error('Database Connection Failed', err);
-    process.exit();
+    // Keep a direct stderr line so failures are visible even if logger transport is misconfigured.
+    console.error('Database Connection Failed:', err);
+    process.exit(1);
   });
 
 const server = app.listen(env.PORT, () => {

@@ -10,6 +10,7 @@ import periodsRouter from './periods/periods.route';
 import reportsRouter from './reports/reports.route';
 import templatesRouter from './templates/templates.route';
 import jobsRouter from './jobs/jobs.route';
+import pdfRouter from './pdf/pdf.route';
 
 const router = createRouter();
 
@@ -24,5 +25,6 @@ router.use('/periods', periodsRouter);
 router.use('/reports', reportsRouter);
 router.use('/templates', templatesRouter);
 router.use('/jobs', jobsRouter);
+router.use('/pdf', pdfRouter);
 
 export default router;

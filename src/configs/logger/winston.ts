@@ -47,6 +47,9 @@ const fileFormat = combine(timestamp(), errors({ stack: true }), json());
 const logger = winston.createLogger({
   level: env.LOG_LEVEL || 'debug',
   levels: customLevels,
+  // We handle fatal process events in src/index.ts; disabling winston exception
+  // handlers avoids crashes in constrained runtimes (uv_uptime EPERM path).
+  exitOnError: false,
   transports: [
     new winston.transports.Console({
       format: consoleFormat,
@@ -86,18 +89,6 @@ const logger = winston.createLogger({
           }),
         ]
       : []),
-  ],
-  exceptionHandlers: [
-    new winston.transports.File({
-      filename: 'logs/exceptions.log',
-      format: fileFormat,
-    }),
-  ],
-  rejectionHandlers: [
-    new winston.transports.File({
-      filename: 'logs/rejections.log',
-      format: fileFormat,
-    }),
   ],
 });
 

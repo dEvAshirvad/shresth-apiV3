@@ -36,8 +36,9 @@ function sanitizeFileName(input: string) {
 }
 
 function formatScore(obtained: number, total: number) {
+  if (total > 0 && total <= 100.0001) return obtained.toFixed(2);
   const pct = total > 0 ? (obtained / total) * 100 : 0;
-  return `${obtained.toFixed(2)} / ${total.toFixed(2)} (${pct.toFixed(1)}%)`;
+  return pct.toFixed(2);
 }
 
 function monthYearFromLabel(periodLabel: string): string {
@@ -419,6 +420,38 @@ export class ReportZipService {
     return { grouped, deptNameById };
   }
 
+  private static async resolvePeriodForDepartmentPdf(params: {
+    organizationId: string;
+    departmentId: string;
+    periodId?: string;
+  }) {
+    if (params.periodId) {
+      await this.requireReportRun(params.organizationId, params.periodId);
+      return params.periodId;
+    }
+
+    const latestDeptRanking = await ReportRankingModel.findOne({
+      organizationId: params.organizationId,
+      departmentId: params.departmentId,
+      scope: 'department',
+    } as any)
+      .sort({ createdAt: -1 })
+      .select('periodId')
+      .lean();
+
+    if (!latestDeptRanking?.periodId) {
+      throw new APIError({
+        STATUS: 404,
+        TITLE: 'DEPARTMENT_REPORT_NOT_FOUND',
+        MESSAGE: 'No report snapshot found for this department.',
+      });
+    }
+
+    const resolvedPeriodId = String((latestDeptRanking as any).periodId);
+    await this.requireReportRun(params.organizationId, resolvedPeriodId);
+    return resolvedPeriodId;
+  }
+
   private static async buildZip(args: {
     organizationId: string;
     periodId: string;
@@ -704,6 +737,53 @@ export class ReportZipService {
     } catch (err) {
       logger.error('Department ZIP auto-generation failed', err);
     }
+  }
+
+  static async generateDepartmentPdf(params: {
+    organizationId: string;
+    departmentId: string;
+    periodId?: string;
+  }) {
+    const periodId = await this.resolvePeriodForDepartmentPdf(params);
+    const period = await KpiPeriodModel.findOne({
+      _id: periodId,
+      organizationId: params.organizationId,
+    } as any)
+      .select('key')
+      .lean();
+    if (!period) {
+      throw new APIError({
+        STATUS: 404,
+        TITLE: 'PERIOD_NOT_FOUND',
+        MESSAGE: 'Period not found',
+      });
+    }
+
+    const { grouped, deptNameById } = await this.collectDepartmentRoleRows(
+      params.organizationId,
+      periodId
+    );
+
+    const roleRows = grouped.get(params.departmentId);
+    if (!roleRows || !roleRows.size) {
+      throw new APIError({
+        STATUS: 404,
+        TITLE: 'DEPARTMENT_REPORT_NOT_FOUND',
+        MESSAGE: 'No ranking rows found for this department in the report snapshot.',
+      });
+    }
+
+    const departmentName =
+      deptNameById.get(params.departmentId) || `Department_${params.departmentId}`;
+    const periodLabel = String((period as any).key || periodId);
+    const buffer = await generatePdfBuffer({
+      departmentName,
+      periodLabel,
+      roleRows,
+    });
+    const fileName = `${sanitizeFileName(departmentName)}_${sanitizeFileName(periodLabel)}.pdf`;
+
+    return { fileName, buffer, periodId, departmentName, periodLabel };
   }
 }
 

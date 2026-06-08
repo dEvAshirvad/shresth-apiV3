@@ -4,6 +4,7 @@ import path from 'node:path';
 import archiver from 'archiver';
 import PDFDocument from 'pdfkit';
 import APIError from '@/configs/errors/APIError';
+import env from '@/configs/env';
 import logger from '@/configs/logger/winston';
 import { sendEmail } from '@/configs/emails';
 import { DepartmentModel } from '../departments/departments.model';
@@ -16,7 +17,7 @@ import { ReportZipArtifactModel } from './reportZipArtifact.model';
 
 const RETENTION_DAYS = 2;
 const TEMP_DIR = path.resolve(process.cwd(), 'uploads', 'temp');
-const PDF_TEMPLATE_VERSION = 'department-html-v2';
+const PDF_TEMPLATE_VERSION = 'department-html-v3';
 
 type RankingRow = {
   employeeId: string;
@@ -300,10 +301,10 @@ async function generatePdfBuffer(args: {
   const html = generatePDFHTML(args);
   try {
     const puppeteer = await import('puppeteer');
-    const executablePath = process.env.PUPPETEER_EXECUTABLE_PATH;
+    const executablePath = process.env.PUPPETEER_EXECUTABLE_PATH || undefined;
     const browser = await puppeteer.launch({
       headless: true,
-      ...(executablePath ? { executablePath } : { channel: 'chrome' as const }),
+      ...(executablePath ? { executablePath } : {}),
       args: ['--no-sandbox', '--disable-setuid-sandbox'],
     });
     try {
@@ -319,11 +320,30 @@ async function generatePdfBuffer(args: {
       await browser.close();
     }
   } catch (err) {
-    logger.warn(
-      'Puppeteer PDF rendering unavailable; falling back to basic PDF renderer.',
+    const allowFallback =
+      env.NODE_ENV !== 'production' ||
+      String((env as any).PDF_ALLOW_FALLBACK || '')
+        .trim()
+        .toLowerCase() === 'true';
+
+    if (allowFallback) {
+      logger.warn(
+        'Puppeteer PDF rendering unavailable; falling back to basic PDF renderer.',
+        err as any
+      );
+      return generatePdfBufferFallback(args);
+    }
+
+    logger.error(
+      'Puppeteer PDF rendering failed in production mode; fallback is disabled to avoid malformed reports.',
       err as any
     );
-    return generatePdfBufferFallback(args);
+    throw new APIError({
+      STATUS: 500,
+      TITLE: 'PDF_RENDERER_UNAVAILABLE',
+      MESSAGE:
+        'Could not render formatted PDF report. Configure Chromium/Puppeteer on the server (or set PUPPETEER_EXECUTABLE_PATH).',
+    });
   }
 }
 

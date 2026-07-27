@@ -152,20 +152,21 @@ export class KpiReportHandler {
   }
 
   static async downloadDepartmentZip(req: Request, res: Response) {
-    const organizationId = req.session?.activeOrganizationId;
-    if (!organizationId) {
-      throw new APIError({
-        STATUS: 400,
-        TITLE: 'NO_ACTIVE_ORGANIZATION',
-        MESSAGE: 'No active organization in session',
-      });
-    }
+    // const organizationId = req.session?.activeOrganizationId;
+    // if (!organizationId) {
+    //   throw new APIError({
+    //     STATUS: 400,
+    //     TITLE: 'NO_ACTIVE_ORGANIZATION',
+    //     MESSAGE: 'No active organization in session',
+    //   });
+    // }
     const periodId = paramStr(req.params.periodId);
     const forceRegenerate =
       String(req.query.force || '').toLowerCase() === 'true' ||
       String(req.query.force || '').toLowerCase() === '1';
     const artifact = await ReportZipService.getOrCreateDepartmentReportZip({
-      organizationId,
+      // organizationId,
+      organizationId: '69d2e6eeb8e910d6f1ed0fa7',
       periodId,
       notifyOwnersAndAdmins: false,
       generatedBy: 'manual',

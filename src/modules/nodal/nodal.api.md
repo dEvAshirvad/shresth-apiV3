@@ -139,7 +139,7 @@ The message may include a fallback admin/owner email when available for support 
 
 **No body.** Requires **`activeOrganizationId`**, authenticated **`req.user`** (inviter), and a usable **`Origin`** (or equivalent) for building invitation links when the invitee has no account yet.
 
-Processes nodal rows in the **active organization** without **`userId`** (query **limit 500**). For each row with a valid **email**: creates pending invitations with **`role: 'nodal'`** or resends email for **pending** invitations; sets **`invitationId`** on new invites.
+Processes nodal rows in the **active organization** without **`userId`** (query **limit 500**). For each row with a valid **email**: creates pending invitations with **`role: 'nodal'`** or resends email for **pending** invitations (refreshing **`expiresAt`** / **`inviterId`** on resend); sets **`invitationId`** on new invites.
 
 **Response:**
 

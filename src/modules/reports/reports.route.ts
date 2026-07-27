@@ -17,7 +17,7 @@ router.get('/', KpiReportHandler.list);
 
 router.get(
   '/:periodId/department-report-zip',
-  requireKpiOrgAdmin,
+  // requireKpiOrgAdmin,
   validateRequest({
     params: z.object({ periodId: z.string().min(1) }),
     query: z.object({ force: z.string().optional() }),

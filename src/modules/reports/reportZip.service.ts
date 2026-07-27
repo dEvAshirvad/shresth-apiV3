@@ -17,7 +17,7 @@ import { ReportZipArtifactModel } from './reportZipArtifact.model';
 
 const RETENTION_DAYS = 2;
 const TEMP_DIR = path.resolve(process.cwd(), 'uploads', 'temp');
-const PDF_TEMPLATE_VERSION = 'department-html-v3';
+const PDF_TEMPLATE_VERSION = 'department-html-v4';
 
 type RankingRow = {
   employeeId: string;
@@ -302,26 +302,40 @@ async function generatePdfBuffer(args: {
   try {
     const puppeteer = await import('puppeteer');
     const executablePath = process.env.PUPPETEER_EXECUTABLE_PATH || undefined;
-    const browser = await puppeteer.launch({
-      headless: true,
-      ...(executablePath ? { executablePath } : {}),
-      args: ['--no-sandbox', '--disable-setuid-sandbox'],
-    });
-    try {
-      const page = await browser.newPage();
-      await page.setContent(html, { waitUntil: 'networkidle0' });
-      const pdf = await page.pdf({
-        format: 'A4',
-        printBackground: true,
-        margin: { top: '20mm', right: '15mm', bottom: '20mm', left: '15mm' },
-      });
-      return Buffer.from(pdf);
-    } finally {
-      await browser.close();
+    const launchAttempts: Array<
+      | { executablePath: string; channel?: never }
+      | { executablePath?: never; channel?: 'chrome' }
+    > = executablePath
+      ? [{ executablePath }]
+      : [{}, { channel: 'chrome' }];
+
+    let launchError: unknown;
+    for (const attempt of launchAttempts) {
+      try {
+        const browser = await puppeteer.launch({
+          headless: true,
+          ...attempt,
+          args: ['--no-sandbox', '--disable-setuid-sandbox'],
+        });
+        try {
+          const page = await browser.newPage();
+          await page.setContent(html, { waitUntil: 'networkidle0' });
+          const pdf = await page.pdf({
+            format: 'A4',
+            printBackground: true,
+            margin: { top: '20mm', right: '15mm', bottom: '20mm', left: '15mm' },
+          });
+          return Buffer.from(pdf);
+        } finally {
+          await browser.close();
+        }
+      } catch (err) {
+        launchError = err;
+      }
     }
+    throw launchError;
   } catch (err) {
     const allowFallback =
-      env.NODE_ENV !== 'production' ||
       String((env as any).PDF_ALLOW_FALLBACK || '')
         .trim()
         .toLowerCase() === 'true';
@@ -335,14 +349,14 @@ async function generatePdfBuffer(args: {
     }
 
     logger.error(
-      'Puppeteer PDF rendering failed in production mode; fallback is disabled to avoid malformed reports.',
+      'Puppeteer PDF rendering failed; fallback is disabled to avoid malformed reports.',
       err as any
     );
     throw new APIError({
       STATUS: 500,
       TITLE: 'PDF_RENDERER_UNAVAILABLE',
       MESSAGE:
-        'Could not render formatted PDF report. Configure Chromium/Puppeteer on the server (or set PUPPETEER_EXECUTABLE_PATH).',
+        'Could not render formatted PDF report. Install Puppeteer Chrome (`npx puppeteer browsers install chrome`) or set PUPPETEER_EXECUTABLE_PATH.',
     });
   }
 }

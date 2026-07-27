@@ -504,6 +504,19 @@ export class EmployeeService {
       );
     }
 
+    // Pending resends must refresh expiry (and inviter) — otherwise the email
+    // reuses a link that may already be past expiresAt.
+    if (eligibleResend.length > 0) {
+      await InvitationModel.bulkWrite(
+        eligibleResend.map(({ invitation }) => ({
+          updateOne: {
+            filter: { _id: invitation._id },
+            update: { $set: { expiresAt, inviterId } },
+          },
+        })) as Parameters<typeof InvitationModel.bulkWrite>[0]
+      );
+    }
+
     type EmailJob = {
       employee: EmployeeDoc;
       invitationEmail: string;

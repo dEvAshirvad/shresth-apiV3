@@ -7,9 +7,22 @@ import { startKpiPeriodCron } from '@/cron/kpi-periods.cron';
 
 const app = createApp();
 
+let server: ReturnType<typeof app.listen>;
+
 connectDB()
   .then(async () => {
     startKpiPeriodCron();
+
+    server = app.listen(env.PORT, () => {
+      logger.info(
+        `Running Status : Server started on port http://localhost:${env.PORT}`
+      );
+      if (!env.BACKGROUND_JOBS_SYNC) {
+        logger.warn(
+          'BACKGROUND_JOBS_SYNC=false: start the BullMQ worker (`pnpm worker:dev`) or nodal invite / WhatsApp jobs will remain queued with no emails.'
+        );
+      }
+    });
   })
   .catch((err) => {
     logger.error('Database Connection Failed', err);
@@ -17,17 +30,6 @@ connectDB()
     console.error('Database Connection Failed:', err);
     process.exit(1);
   });
-
-const server = app.listen(env.PORT, () => {
-  logger.info(
-    `Running Status : Server started on port http://localhost:${env.PORT}`
-  );
-  if (!env.BACKGROUND_JOBS_SYNC) {
-    logger.warn(
-      'BACKGROUND_JOBS_SYNC=false: start the BullMQ worker (`pnpm worker:dev`) or nodal invite / WhatsApp jobs will remain queued with no emails.'
-    );
-  }
-});
 
 redis.on('connect', () => {
   logger.info('Redis client connecting...');
@@ -52,7 +54,9 @@ redis.on('reconnecting', () => {
 // Graceful shutdown (single handler: server → Redis → MongoDB)
 process.on('SIGINT', async () => {
   logger.info('Shutting down gracefully...');
-  server.close(() => logger.info('HTTP server closed'));
+  if (server) {
+    server.close(() => logger.info('HTTP server closed'));
+  }
   await redis.quit();
   logger.info('Redis connection closed through app termination');
   await disconnectDB();
@@ -62,5 +66,9 @@ process.on('SIGINT', async () => {
 
 process.on('unhandledRejection', (err) => {
   logger.log('fatal', 'Unhandled rejection', err);
-  server.close(() => process.exit(1));
+  if (server) {
+    server.close(() => process.exit(1));
+    return;
+  }
+  process.exit(1);
 });

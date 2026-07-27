@@ -1,4 +1,4 @@
-import { APIError } from 'better-auth/api';
+import APIError from '@/configs/errors/APIError';
 import { sendEmail } from './emails';
 
 const emailTemplates = {

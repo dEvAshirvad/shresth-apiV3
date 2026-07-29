@@ -63,7 +63,7 @@ export class NodalHandler {
         });
       }
 
-      const nodal = await NodalService.createNodal({
+      const { nodal, credentials } = await NodalService.createNodal({
         name,
         email,
         phone,
@@ -74,7 +74,9 @@ export class NodalHandler {
         res,
         {
           nodal,
-          message: 'Nodal record created successfully',
+          credentials,
+          message:
+            'Nodal record created and credentials provisioned successfully',
         },
         201
       );
@@ -512,6 +514,138 @@ export class NodalHandler {
         res,
         {
           ...nodal,
+        },
+        200
+      );
+    } catch (error: any) {
+      throw error;
+    }
+  }
+
+  /** Provision empId + password for unlinked nodals in the active org. */
+  static async provisionCredentials(req: Request, res: Response) {
+    try {
+      const organizationId = req.session?.activeOrganizationId;
+      if (!organizationId || !isValidObjectId(organizationId)) {
+        throw new APIError({
+          STATUS: 400,
+          TITLE: 'NO_ACTIVE_ORGANIZATION',
+          MESSAGE:
+            'No active organization in session. Select an organization first.',
+        });
+      }
+
+      const result =
+        await NodalService.provisionCredentialsForOrg(organizationId);
+
+      Respond(
+        res,
+        {
+          ...result,
+          message:
+            result.credentials.length > 0
+              ? `Provisioned ${result.credentials.length} nodal credential(s). Download/save passwords now — they are shown only once.`
+              : 'No nodals needed provisioning',
+        },
+        200
+      );
+    } catch (error: any) {
+      throw error;
+    }
+  }
+
+  /**
+   * One-shot: rotate/provision passwords for **all** nodals (no WhatsApp).
+   * Returns slim credentials: name, phone, email, empId, password.
+   * `?format=csv` returns a CSV file.
+   */
+  static async downloadAllCredentials(req: Request, res: Response) {
+    try {
+      const organizationId = req.session?.activeOrganizationId;
+      if (!organizationId || !isValidObjectId(organizationId)) {
+        throw new APIError({
+          STATUS: 400,
+          TITLE: 'NO_ACTIVE_ORGANIZATION',
+          MESSAGE:
+            'No active organization in session. Select an organization first.',
+        });
+      }
+
+      const format = String(req.query.format || 'json').toLowerCase();
+
+      const result =
+        await NodalService.downloadAllCredentialsForOrg(organizationId);
+
+      if (format === 'csv') {
+        const header = 'name,phone,email,empId,password\n';
+        const escape = (v: string) => {
+          if (/[",\n\r]/.test(v)) return `"${v.replace(/"/g, '""')}"`;
+          return v;
+        };
+        const body = result.credentials
+          .map((c) =>
+            [
+              escape(c.name),
+              escape(c.phone),
+              escape(c.email || ''),
+              escape(c.empId),
+              escape(c.password),
+            ].join(',')
+          )
+          .join('\n');
+        const stamp = new Date().toISOString().slice(0, 19).replace(/[:T]/g, '-');
+        res.setHeader('Content-Type', 'text/csv; charset=utf-8');
+        res.setHeader(
+          'Content-Disposition',
+          `attachment; filename="nodal-credentials-${stamp}.csv"`
+        );
+        return res.status(200).send(`${header}${body}\n`);
+      }
+
+      Respond(
+        res,
+        {
+          credentials: result.credentials,
+          errors: result.errors,
+          total: result.total,
+          message: `Generated ${result.credentials.length} of ${result.total} credential(s). Passwords are shown only once — download now.`,
+        },
+        200
+      );
+    } catch (error: any) {
+      throw error;
+    }
+  }
+
+  static async resetPassword(req: Request, res: Response) {
+    try {
+      const organizationId = req.session?.activeOrganizationId;
+      if (!organizationId || !isValidObjectId(organizationId)) {
+        throw new APIError({
+          STATUS: 400,
+          TITLE: 'NO_ACTIVE_ORGANIZATION',
+          MESSAGE:
+            'No active organization in session. Select an organization first.',
+        });
+      }
+
+      const id = paramStr(req.params.id);
+      if (!isValidObjectId(id)) {
+        throw new APIError({
+          STATUS: 400,
+          TITLE: 'INVALID_NODAL_ID',
+          MESSAGE: 'Invalid nodal id',
+        });
+      }
+
+      const credentials = await NodalService.resetPassword(id, organizationId);
+
+      Respond(
+        res,
+        {
+          credentials,
+          message:
+            'Password reset. Save the new password now — it is shown only once.',
         },
         200
       );

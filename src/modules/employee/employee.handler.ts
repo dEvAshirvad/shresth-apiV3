@@ -77,21 +77,36 @@ function normalizeRow(
 export class EmployeeHandler {
   static async createEmployee(req: Request, res: Response) {
     try {
+      const organizationId = req.session?.activeOrganizationId;
+      if (!organizationId || !isValidObjectId(organizationId)) {
+        throw new APIError({
+          STATUS: 400,
+          TITLE: 'NO_ACTIVE_ORGANIZATION',
+          MESSAGE:
+            'No active organization in session. Select an organization first.',
+        });
+      }
+
       const { name, email, phone, department, departmentRole } = req.body;
 
-      const employee = await EmployeeService.createEmployee({
-        name,
-        email,
-        phone,
-        department,
-        departmentRole,
-      });
+      const { employee, credentials } = await EmployeeService.createEmployee(
+        {
+          name,
+          email,
+          phone,
+          department,
+          departmentRole,
+        },
+        organizationId
+      );
 
       Respond(
         res,
         {
           employee,
-          message: 'Employee created successfully',
+          credentials,
+          message:
+            'Employee created and credentials provisioned successfully. Save the password now — it is shown only once.',
         },
         201
       );
@@ -326,9 +341,20 @@ export class EmployeeHandler {
         );
       }
 
+      const organizationId = req.session?.activeOrganizationId;
+      if (!organizationId || !isValidObjectId(organizationId)) {
+        throw new APIError({
+          STATUS: 400,
+          TITLE: 'NO_ACTIVE_ORGANIZATION',
+          MESSAGE:
+            'No active organization in session. Select an organization first.',
+        });
+      }
+
       const result = await EmployeeService.importEmployees(
         rows,
-        req.body.departmentId
+        req.body.departmentId,
+        organizationId
       );
 
       Respond(
@@ -336,7 +362,10 @@ export class EmployeeHandler {
         {
           ...result,
           totalProcessed: rows.length,
-          message: 'Employees imported successfully',
+          message:
+            result.credentials.length > 0
+              ? `Employees imported. Provisioned ${result.credentials.length} credential(s) — download/save passwords now.`
+              : 'Employees imported successfully',
         },
         200
       );
@@ -511,6 +540,156 @@ export class EmployeeHandler {
               : errors.length
                 ? 'Some invitations could not be sent; see errors'
                 : 'Invitations sent successfully',
+        },
+        200
+      );
+    } catch (error: any) {
+      throw error;
+    }
+  }
+
+  /** Provision empId + password for unlinked employees (optional departmentId body). */
+  static async provisionCredentials(req: Request, res: Response) {
+    try {
+      const organizationId = req.session?.activeOrganizationId;
+      if (!organizationId || !isValidObjectId(organizationId)) {
+        throw new APIError({
+          STATUS: 400,
+          TITLE: 'NO_ACTIVE_ORGANIZATION',
+          MESSAGE:
+            'No active organization in session. Select an organization first.',
+        });
+      }
+
+      const departmentId = req.body?.departmentId
+        ? String(req.body.departmentId)
+        : undefined;
+
+      const result = await EmployeeService.provisionCredentialsForOrg(
+        organizationId,
+        departmentId
+      );
+
+      Respond(
+        res,
+        {
+          ...result,
+          message:
+            result.credentials.length > 0
+              ? `Provisioned ${result.credentials.length} employee credential(s). Download/save passwords now — they are shown only once.`
+              : 'No employees needed provisioning',
+        },
+        200
+      );
+    } catch (error: any) {
+      throw error;
+    }
+  }
+
+  /**
+   * One-shot: rotate/provision passwords for employees (optional ?departmentId).
+   * `?format=csv` returns a CSV file.
+   */
+  static async downloadAllCredentials(req: Request, res: Response) {
+    try {
+      const organizationId = req.session?.activeOrganizationId;
+      if (!organizationId || !isValidObjectId(organizationId)) {
+        throw new APIError({
+          STATUS: 400,
+          TITLE: 'NO_ACTIVE_ORGANIZATION',
+          MESSAGE:
+            'No active organization in session. Select an organization first.',
+        });
+      }
+
+      const departmentId = req.query.departmentId
+        ? String(req.query.departmentId)
+        : req.body?.departmentId
+          ? String(req.body.departmentId)
+          : undefined;
+      const format = String(req.query.format || 'json').toLowerCase();
+
+      const result = await EmployeeService.downloadAllCredentialsForOrg(
+        organizationId,
+        departmentId
+      );
+
+      if (format === 'csv') {
+        const header = 'name,phone,email,empId,password\n';
+        const escape = (v: string) => {
+          if (/[",\n\r]/.test(v)) return `"${v.replace(/"/g, '""')}"`;
+          return v;
+        };
+        const body = result.credentials
+          .map((c) =>
+            [
+              escape(c.name),
+              escape(c.phone),
+              escape(c.email || ''),
+              escape(c.empId),
+              escape(c.password),
+            ].join(',')
+          )
+          .join('\n');
+        const stamp = new Date()
+          .toISOString()
+          .slice(0, 19)
+          .replace(/[:T]/g, '-');
+        res.setHeader('Content-Type', 'text/csv; charset=utf-8');
+        res.setHeader(
+          'Content-Disposition',
+          `attachment; filename="employee-credentials-${stamp}.csv"`
+        );
+        return res.status(200).send(`${header}${body}\n`);
+      }
+
+      Respond(
+        res,
+        {
+          credentials: result.credentials,
+          errors: result.errors,
+          total: result.total,
+          message: `Generated ${result.credentials.length} of ${result.total} credential(s). Passwords are shown only once — download now.`,
+        },
+        200
+      );
+    } catch (error: any) {
+      throw error;
+    }
+  }
+
+  static async resetPassword(req: Request, res: Response) {
+    try {
+      const organizationId = req.session?.activeOrganizationId;
+      if (!organizationId || !isValidObjectId(organizationId)) {
+        throw new APIError({
+          STATUS: 400,
+          TITLE: 'NO_ACTIVE_ORGANIZATION',
+          MESSAGE:
+            'No active organization in session. Select an organization first.',
+        });
+      }
+
+      const id = paramStr(req.params.id);
+      if (!isValidObjectId(id)) {
+        throw new APIError({
+          STATUS: 400,
+          TITLE: 'INVALID_EMPLOYEE_ID',
+          MESSAGE: 'Invalid employee id',
+        });
+      }
+
+      const credentials = await EmployeeService.resetPassword(
+        id,
+        organizationId
+      );
+
+      Respond(
+        res,
+        {
+          credentials,
+          message:
+            'Password reset. Save the new password now — it is shown only once.',
         },
         200
       );

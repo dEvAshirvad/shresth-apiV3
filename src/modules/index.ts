@@ -11,6 +11,7 @@ import reportsRouter from './reports/reports.route';
 import templatesRouter from './templates/templates.route';
 import jobsRouter from './jobs/jobs.route';
 import pdfRouter from './pdf/pdf.route';
+import staffRouter from './staff/staff.route';
 
 const router = createRouter();
 
@@ -20,6 +21,7 @@ router.use('/onboarding', onboardingRouter);
 router.use('/departments', departmentsRouter);
 router.use('/employee', employeeRouter);
 router.use('/nodal', nodalRouter);
+router.use('/staff', staffRouter);
 router.use('/entries', entriesRouter);
 router.use('/periods', periodsRouter);
 router.use('/reports', reportsRouter);

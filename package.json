@@ -19,6 +19,7 @@
 		"test": "vitest",
 		"test:watch": "vitest --watch",
 		"test:coverage": "vitest run --coverage",
+		"provision:nodals": "tsx scripts/provision-nodal-credentials.ts",
 		"clean:install": "rm -rf ./node_modules && rm -r package-lock.json && pnpm i",
 		"clean:find-unused": "knip",
 		"lint": "eslint src/**/*.ts",

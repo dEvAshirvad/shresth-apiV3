@@ -4,6 +4,7 @@ node_modules
 redis_data
 logs
 .env
+uploads
 pnpm-lock.yaml
 .DS_Store
 graphify-out

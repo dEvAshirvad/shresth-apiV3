@@ -6,27 +6,31 @@
 
 ## What this module is
 
-**Nodal records** are **organization-scoped** candidates for KPI users who should join as **nodals** (not line staff). Stored in **`tb_nodals`**, with fields: **`name`**, **`phone`** (required), optional **`email`**, **`organizationId`**, optional **`userId`**, **`memberId`**, **`invitationId`**, optional **`metadata`**. There are **no** department / `departmentRole` fields on the nodal model (unlike older parallel designs).
+**Nodal records** are **organization-scoped** KPI officers stored in **`tb_nodals`**. Fields: **`name`**, **`phone`** (required), optional **`email`**, **`organizationId`**, optional **`empId`** (login username), **`userId`**, **`memberId`**, legacy **`invitationId`**, optional **`metadata`**.
 
-Use **`POST /send-invitation-to-rest-nodals`** to create or resend invitations with **`role: 'nodal'`** and set **`invitationId`**. Use **`POST /sync-from-org-members`** to backfill **`userId`** / **`memberId`** from Better Auth **user** + **member** by **email** for all nodal rows in the active org. Use **`POST /:email/attach-user-id-and-member-id`** to set **`userId`** and **`memberId`** manually when you already know both ids (path **`email`** must match the nodal row; URL-encode the address).
+### Preferred path (pseudo-users)
 
-## Difference from Employee API
+On **create** / **import** / **`POST /provision-credentials`**, the API:
 
-When invitations are sent, new rows use **`role: 'nodal'`** on the **invitation** document (employees use **`staff`**). After acceptance, the org **member** has the **nodal** role instead of **staff**.
+1. Auto-generates **`empId`** (`{orgCode}_{NNNN}`)
+2. Creates a Better Auth user (username = empId, synthetic email) with password
+3. Adds org **member** with role **`nodal`**, sets **`isOnboarded: true`**
+4. Returns plaintext credentials **once** (admin UI / CSV). **WhatsApp credential send is disabled** (provider 401).
 
----
+Nodals sign in at the frontend **`/login`** with empId + password (no invitation / onboarding).
 
-## Why it exists
+### Legacy path
 
-CRUD, bulk import by phone within an org, bulk send invitations, sync user/member from email, and manual attach — same product flows as **employees**, but for **nodal** org membership.
+**`POST /send-invitation-to-rest-nodals`** and **`POST /sync-from-org-members`** remain for older Google-invite flows. Prefer provision endpoints for new nodals.
+
+Use **`POST /:id/reset-password`** to rotate a password (returns new password once; no WhatsApp).
 
 ---
 
 ## Auth and scope
 
-- **`req.session.activeOrganizationId`** (valid ObjectId) is required for **`GET /`**, **`POST /`** (create), **`POST /import`**, **`POST /sync-from-org-members`**, and **`POST /send-invitation-to-rest-nodals`**.
-- List and create/import flows are **scoped to the active organization** (`organizationId` on documents).
-- **`send-invitation-to-rest-nodals`** also requires an authenticated **`req.user`** (inviter) and uses the **`Origin`** request header for invitation links when applicable.
+- **`req.session.activeOrganizationId`** (valid ObjectId) is required for list/create/import/provision/reset and legacy invite/sync.
+- List and create/import flows are **scoped to the active organization**.
 
 ---
 
@@ -34,19 +38,22 @@ CRUD, bulk import by phone within an org, bulk send invitations, sync user/membe
 
 | Method | Path | Purpose |
 |--------|------|---------|
-| `GET` | `/` | Paginated list for the **active org** + search. |
+| `GET` | `/` | Paginated list for the **active org** + search (name/phone/email/empId). |
 | `GET` | `/import/template` | Download CSV/XLSX import template. |
-| `POST` | `/import` | Bulk upsert by **`phone`** within the active org (`multipart` file; no department in body). |
-| `POST` | `/sync-from-org-members` | For **all** nodals in the active org: match **email → user → member**; set `userId` + `memberId` where missing. **No body.** Returns **`202`** + **`jobId`** when work is queued (BullMQ); **`200`** + sync result when **`BACKGROUND_JOBS_SYNC=true`**. |
-| `GET` | `/am-i-assigned` | Check whether the logged-in user is linked to a nodal row and assigned to any department. |
-| `POST` | `/:email/attach-user-id-and-member-id` | Set **`userId`** and **`memberId`** on the nodal whose **`email`** matches the path segment. |
-| `GET` | `/:id` | Single nodal by Mongo **`_id`** (populated fields where applicable). |
-| `POST` | `/` | Create nodal in the active org. |
-| `PUT` | `/:id` | Update nodal. |
-| `DELETE` | `/:id` | Delete nodal. |
-| `POST` | `/send-invitation-to-rest-nodals` | Create/resend invitations (**nodal** role) for nodals in the org without **`userId`**. **No body.** Returns **`202`** + **`jobId`** when queued; **`200`** with **`nodals`** / **`errors`** when **`BACKGROUND_JOBS_SYNC=true`**. Poll **`GET /api/v1/jobs/:jobId`** for queued results. |
+| `POST` | `/import` | Bulk upsert by **`phone`**; provisions credentials for new/unlinked rows; returns **`credentials[]`**. |
+| `POST` | `/provision-credentials` | Provision empId + password for unlinked nodals in the active org. |
+| `POST` | `/download-all-credentials` | **One-shot (fast):** rotate passwords for all org nodals — **no WhatsApp**. Returns slim rows `name,phone,email,empId,password` (or `?format=csv`). |
+| `POST` | `/:id/reset-password` | Rotate password for one nodal; return credentials once. |
+| `POST` | `/sync-from-org-members` | **Legacy.** Link user/member by email. |
+| `POST` | `/send-invitation-to-rest-nodals` | **Legacy.** Email invitations (`role: nodal`). |
+| `POST` | `/:email/attach-user-id-and-member-id` | Manual link (repair). |
+| `GET` | `/am-i-assigned` | Current user mapped to nodal + department assignment. |
+| `GET` | `/:id` | Get one. |
+| `POST` | `/` | Create + provision credentials. |
+| `PUT` | `/:id` | Update name/phone/email. |
+| `DELETE` | `/:id` | Delete. |
 
-Static paths (`/import/template`, `/import`, `/sync-from-org-members`, `/send-invitation-to-rest-nodals`, `/am-i-assigned`) are registered before **`/:email/attach-user-id-and-member-id`** and **`/:id`** so they are not interpreted as ids or emails.
+Static paths (`/import/template`, `/import`, `/sync-from-org-members`, `/send-invitation-to-rest-nodals`, `/provision-credentials`, `/download-all-credentials`, `/am-i-assigned`) are registered before **`/:email/...`** and **`/:id`**.
 
 ---
 

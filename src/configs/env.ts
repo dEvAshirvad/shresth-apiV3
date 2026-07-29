@@ -84,6 +84,8 @@ const EnvSchema = z.object({
   WHATSAPP_CAMPAIGN_TOP: z.string().optional(),
   WHATSAPP_CAMPAIGN_MEDIUM: z.string().optional(),
   WHATSAPP_CAMPAIGN_BOTTOM: z.string().optional(),
+  /** Optional Interakt/WA campaign for nodal empId + password delivery. */
+  WHATSAPP_CAMPAIGN_NODAL_CREDENTIALS: z.string().optional(),
   WHATSAPP_AUTO_DELAY_MS: z.coerce.number().optional(),
 });
 

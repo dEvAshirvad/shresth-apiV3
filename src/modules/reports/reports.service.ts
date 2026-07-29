@@ -8,6 +8,7 @@ import { ReportRankingModel } from './reportRanking.model';
 import { ReportRunModel } from './reportRuns.model';
 import { ReportZipService } from './reportZip.service';
 import { WhatsappPerformanceService } from './whatsappPerformance.service';
+import { compareByMarksPercentage, marksPercentage } from './rankingOrder';
 
 async function deleteReportArtifactsForPeriod(organizationId: string, periodId: string) {
   const filter = { organizationId, periodId } as any;
@@ -148,13 +149,9 @@ export class KpiReportService {
 
     const rankingDocs: any[] = [];
 
-    // Department rankings
+    // Department rankings (by relative % = obtained/total*100, 2 decimals)
     for (const [deptId, arr] of byDept.entries()) {
-      arr.sort((a: any, b: any) =>
-        b.obtainedMarks !== a.obtainedMarks
-          ? b.obtainedMarks - a.obtainedMarks
-          : b.totalMarks - a.totalMarks
-      );
+      arr.sort(compareByMarksPercentage);
       arr.forEach((r: any, idx: number) => {
         rankingDocs.push({
           organizationId,
@@ -174,12 +171,8 @@ export class KpiReportService {
       });
     }
 
-    // Overall ranking
-    const overall = [...deptEmployeeAgg].sort((a: any, b: any) =>
-      b.obtainedMarks !== a.obtainedMarks
-        ? b.obtainedMarks - a.obtainedMarks
-        : b.totalMarks - a.totalMarks
-    );
+    // Overall ranking (same relative % order across all departments)
+    const overall = [...deptEmployeeAgg].sort(compareByMarksPercentage);
     overall.forEach((r: any, idx: number) => {
       rankingDocs.push({
         organizationId,
@@ -251,14 +244,22 @@ export class KpiReportService {
     await requireReportRunOrThrow(organizationId, periodId);
     const filter: any = { organizationId, periodId, scope };
     if (scope === 'department') filter.departmentId = departmentId;
-    const [docs, total] = await Promise.all([
-      ReportRankingModel.find(filter)
-        .sort({ rank: 1 })
-        .skip((page - 1) * limit)
-        .limit(limit)
-        .lean(),
-      ReportRankingModel.countDocuments(filter),
-    ]);
+
+    // Re-order by relative % so older snapshots (ranked by raw marks) still return
+    // correct order without requiring force regenerate.
+    const all = await ReportRankingModel.find(filter).lean();
+    all.sort(compareByMarksPercentage);
+    const ranked = all.map((row: any, idx: number) => ({
+      ...row,
+      rank: idx + 1,
+      percentage: marksPercentage(
+        Number(row.obtainedMarks || 0),
+        Number(row.totalMarks || 0)
+      ),
+    }));
+
+    const total = ranked.length;
+    const docs = ranked.slice((page - 1) * limit, page * limit);
     return {
       docs,
       total,

@@ -14,6 +14,8 @@ export const userZodSchema = z.object({
   banReason: z.string(),
   banExpires: z.date(),
   isOnboarded: z.boolean().default(false),
+  username: z.string().optional(),
+  displayUsername: z.string().optional(),
 });
 
 export type User = z.infer<typeof userZodSchema>;
@@ -61,6 +63,17 @@ const userSchema = new mongoose.Schema(
     isOnboarded: {
       type: Boolean,
       default: false,
+    },
+    /** Better Auth username plugin — used as nodal empId login. */
+    username: {
+      type: String,
+      required: false,
+      unique: true,
+      sparse: true,
+    },
+    displayUsername: {
+      type: String,
+      required: false,
     },
   },
   {

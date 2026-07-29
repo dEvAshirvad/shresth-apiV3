@@ -12,6 +12,7 @@ import { ReportRunModel } from './reportRuns.model';
 import type { PerformerBucket, WhatsAppSendStatus } from './whatsappReportSend.model';
 import { WhatsAppReportSendModel } from './whatsappReportSend.model';
 import { enqueueWhatsAppSend } from '@/jobs/kpiBackground.queue';
+import { compareByMarksPercentage } from './rankingOrder';
 
 /** Max JSON length stored on send record for provider debugging. */
 const PROVIDER_RESPONSE_MAX = 8000;
@@ -369,11 +370,7 @@ export class WhatsappPerformanceService {
     const topPerformerSummaryByScope = new Map<string, string>();
 
     for (const [scope, arr] of rowsByRoleScope.entries()) {
-      arr.sort((a: any, b: any) =>
-        b.obtainedMarks !== a.obtainedMarks
-          ? b.obtainedMarks - a.obtainedMarks
-          : b.totalMarks - a.totalMarks
-      );
+      arr.sort(compareByMarksPercentage);
       cohortSizeByScope.set(scope, arr.length);
       arr.forEach((r: any, idx: number) => {
         cohortRankByScopeEmployee.set(`${scope}::${String(r.employeeId)}`, idx + 1);

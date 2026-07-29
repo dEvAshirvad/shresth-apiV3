@@ -18,6 +18,12 @@ import { MemberModel } from '../auth/members/members.model';
 import logger from '@/configs/logger/winston';
 import { z } from 'zod';
 import { DepartmentModel } from '../departments/departments.model';
+import {
+  provisionNodalCredentials,
+  resetNodalPassword,
+  rotateNodalPasswordFast,
+  type NodalCredentialPayload,
+} from './nodal.provision';
 
 export interface InvitationNodalError {
   nodalId: string;
@@ -86,7 +92,12 @@ export class NodalService {
       });
     }
     const nodal = await NodalModal.create(payload);
-    return nodal;
+    const credentials = await provisionNodalCredentials({
+      nodalId: String((nodal as any)._id),
+      organizationId: String(payload.organizationId),
+    });
+    const refreshed = await NodalModal.findById((nodal as any)._id).lean();
+    return { nodal: refreshed ?? nodal, credentials };
   }
 
   static async getNodal(id: string) {
@@ -116,6 +127,7 @@ export class NodalService {
         { name: { $regex: search, $options: 'i' } },
         { email: { $regex: search, $options: 'i' } },
         { phone: { $regex: search, $options: 'i' } },
+        { empId: { $regex: search, $options: 'i' } },
       ];
     }
 
@@ -158,7 +170,13 @@ export class NodalService {
 
   static async importNodals(rows: NodalImportRow[], organizationId: string) {
     if (!rows.length) {
-      return { insertedCount: 0, updatedCount: 0 };
+      return {
+        insertedCount: 0,
+        updatedCount: 0,
+        skippedProvisioned: 0,
+        credentials: [] as NodalCredentialPayload[],
+        provisionErrors: [] as Array<{ phone?: string; message: string }>,
+      };
     }
 
     if (!isValidObjectId(organizationId)) {
@@ -172,26 +190,190 @@ export class NodalService {
     const orgOid = new mongoose.Types.ObjectId(organizationId);
     let insertedCount = 0;
     let updatedCount = 0;
+    let skippedProvisioned = 0;
+    const credentials: NodalCredentialPayload[] = [];
+    const provisionErrors: Array<{ phone?: string; message: string }> = [];
 
     for (const row of rows) {
+      const prior = await NodalModal.findOne({
+        phone: row.phone,
+        organizationId: orgOid,
+      } as any).lean();
+
       const updateDoc: Record<string, unknown> = {
         name: row.name,
-        email: row.email,
         phone: row.phone,
         organizationId: orgOid,
       };
+      if (row.email) updateDoc.email = row.email;
 
-      const existing = await NodalModal.findOneAndUpdate(
+      const doc = await NodalModal.findOneAndUpdate(
         { phone: row.phone, organizationId: orgOid } as any,
         { $set: updateDoc },
-        { upsert: true, new: false }
+        { upsert: true, new: true }
       ).lean();
 
-      if (existing) updatedCount += 1;
+      if (prior) updatedCount += 1;
       else insertedCount += 1;
+
+      if ((doc as any)?.userId && (doc as any)?.empId) {
+        skippedProvisioned += 1;
+        continue;
+      }
+
+      try {
+        const creds = await provisionNodalCredentials({
+          nodalId: String((doc as any)._id),
+          organizationId,
+        });
+        credentials.push(creds);
+      } catch (err) {
+        provisionErrors.push({
+          phone: row.phone,
+          message: err instanceof Error ? err.message : String(err),
+        });
+      }
     }
 
-    return { insertedCount, updatedCount };
+    return {
+      insertedCount,
+      updatedCount,
+      skippedProvisioned,
+      credentials,
+      provisionErrors,
+    };
+  }
+
+  /** Provision credentials for all nodals in org that lack userId / empId. */
+  static async provisionCredentialsForOrg(organizationId: string) {
+    if (!isValidObjectId(organizationId)) {
+      throw new APIError({
+        STATUS: 400,
+        TITLE: 'INVALID_ORGANIZATION_ID',
+        MESSAGE: 'Invalid organization id',
+      });
+    }
+
+    const rows = await NodalModal.find({
+      organizationId,
+      $or: [
+        { userId: { $exists: false } },
+        { userId: null },
+        { empId: { $exists: false } },
+        { empId: null },
+        { empId: '' },
+      ],
+    })
+      .limit(500)
+      .lean();
+
+    const credentials: NodalCredentialPayload[] = [];
+    const errors: Array<{ nodalId: string; phone?: string; message: string }> =
+      [];
+
+    for (const row of rows) {
+      try {
+        const creds = await provisionNodalCredentials({
+          nodalId: String((row as any)._id),
+          organizationId,
+        });
+        credentials.push(creds);
+      } catch (err) {
+        errors.push({
+          nodalId: String((row as any)._id),
+          phone: (row as any).phone,
+          message: err instanceof Error ? err.message : String(err),
+        });
+      }
+    }
+
+    return { credentials, errors };
+  }
+
+  /**
+   * One-shot credential export: rotate passwords for provisioned nodals (fast,
+   * no WhatsApp). Unlinked rows go through full provision with WhatsApp skipped.
+   * Returns slim rows: name, phone, email, empId, password.
+   */
+  static async downloadAllCredentialsForOrg(organizationId: string) {
+    if (!isValidObjectId(organizationId)) {
+      throw new APIError({
+        STATUS: 400,
+        TITLE: 'INVALID_ORGANIZATION_ID',
+        MESSAGE: 'Invalid organization id',
+      });
+    }
+
+    const rows = await NodalModal.find({ organizationId })
+      .select('name phone email empId userId memberId')
+      .limit(500)
+      .lean();
+
+    type ExportRow = {
+      name: string;
+      phone: string;
+      email: string;
+      empId: string;
+      password: string;
+    };
+
+    const credentials: ExportRow[] = [];
+    const errors: Array<{ nodalId: string; phone?: string; message: string }> =
+      [];
+
+    const CONCURRENCY = 10;
+    let index = 0;
+
+    async function worker() {
+      while (index < rows.length) {
+        const i = index++;
+        const row = rows[i] as any;
+        const nodalId = String(row._id);
+        try {
+          if (row.userId && row.empId) {
+            const creds = await rotateNodalPasswordFast({
+              name: row.name,
+              phone: row.phone,
+              email: row.email,
+              empId: String(row.empId),
+              userId: String(row.userId),
+            });
+            credentials.push(creds);
+          } else {
+            const full = await provisionNodalCredentials({
+              nodalId,
+              organizationId,
+              skipWhatsApp: true,
+            });
+            credentials.push({
+              name: full.name,
+              phone: full.phone,
+              email: full.email || '',
+              empId: full.empId,
+              password: full.password,
+            });
+          }
+        } catch (err) {
+          errors.push({
+            nodalId,
+            phone: row.phone,
+            message: err instanceof Error ? err.message : String(err),
+          });
+        }
+      }
+    }
+
+    const workers = Array.from(
+      { length: Math.min(CONCURRENCY, Math.max(1, rows.length)) },
+      () => worker()
+    );
+    await Promise.all(workers);
+
+    return { credentials, errors, total: rows.length };
+  }
+
+  static async resetPassword(nodalId: string, organizationId: string) {
+    return resetNodalPassword({ nodalId, organizationId });
   }
 
   /**

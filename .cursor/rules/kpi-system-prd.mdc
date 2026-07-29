@@ -31,7 +31,7 @@ This backend (`/api/v1`) supports a **KPI / performance** product: organizations
 
 ### Operational flow (admin / nodal / staff)
 
-1. **Nodals first** — Import **nodal** candidates (`/api/v1/nodal`), send org invitations (`send-invitation-to-rest-nodals`), monitor adoption. Nodals accept invites and complete onboarding; then **`userId` / `memberId`** are linked via **`POST .../sync-from-org-members`** or **`POST .../:id/attach-user-id-and-member-id`**.
+1. **Nodals first** — Import **nodal** candidates (`/api/v1/nodal`). Prefer **provision credentials** (auto **`empId`** + generated password, WhatsApp + one-time CSV); nodals log in with empId/password at `/login` with **no onboarding**. Legacy: send org invitations (`send-invitation-to-rest-nodals`), then **`sync-from-org-members`** / **`attach-user-id-and-member-id`**.
 2. **Departments** — Import departments; **`nodal_email`** resolves an existing member (same email) for **`assignedNodal`**.
 3. **Employees** — Import **employees** (staff line); same invitation + sync/attach pattern as nodals (`/api/v1/employee`).
 4. **Templates** — Created per **department role** (derived from employee / nodal **`departmentRole`**); used to validate entries.

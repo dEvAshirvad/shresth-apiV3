@@ -6,6 +6,8 @@ export const employeeZodSchema = z.object({
   name: z.string(),
   email: z.string().email().optional(),
   phone: z.string(),
+  /** Auto-generated login id (Better Auth username). Set on credential provision. */
+  empId: z.string().optional(),
   memberId: z.string().optional(),
   userId: z.string().optional(),
   invitationId: z.string().optional(),
@@ -19,6 +21,7 @@ export const employeeZodSchema = z.object({
 export const employeeDepartmentCreateZodSchema = employeeZodSchema
   .omit({
     id: true,
+    empId: true,
     userId: true,
     memberId: true,
     invitationId: true,
@@ -72,6 +75,13 @@ const employeeSchema = new mongoose.Schema<Employee>(
       ref: 'invitation',
       required: false,
       default: null,
+    },
+    empId: {
+      type: String,
+      required: false,
+      unique: true,
+      sparse: true,
+      index: true,
     },
     /** Sparse unique so many rows can omit email until provided. */
     email: {

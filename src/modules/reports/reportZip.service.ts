@@ -14,6 +14,7 @@ import { KpiPeriodModel } from '../periods/periods.model';
 import { ReportRankingModel } from './reportRanking.model';
 import { ReportRunModel } from './reportRuns.model';
 import { ReportZipArtifactModel } from './reportZipArtifact.model';
+import { compareByMarksPercentage } from './rankingOrder';
 
 const RETENTION_DAYS = 2;
 const TEMP_DIR = path.resolve(process.cwd(), 'uploads', 'temp');
@@ -442,11 +443,7 @@ export class ReportZipService {
 
     for (const roleMap of grouped.values()) {
       for (const [role, arr] of roleMap.entries()) {
-        arr.sort((a, b) =>
-          b.obtainedMarks !== a.obtainedMarks
-            ? b.obtainedMarks - a.obtainedMarks
-            : b.totalMarks - a.totalMarks
-        );
+        arr.sort(compareByMarksPercentage);
         roleMap.set(role, arr);
       }
     }
@@ -771,6 +768,86 @@ export class ReportZipService {
     } catch (err) {
       logger.error('Department ZIP auto-generation failed', err);
     }
+  }
+
+  /**
+   * Test helper: build department PDFs for a period and email them to a single
+   * address using the same subject/body as nodal auto-notify.
+   * If `departmentIds` is omitted, attaches all department PDFs for the period.
+   */
+  static async sendTestNodalReportEmail(params: {
+    organizationId: string;
+    periodId: string;
+    toEmail: string;
+    departmentIds?: string[];
+  }) {
+    await this.requireReportRun(params.organizationId, params.periodId);
+
+    const period = await KpiPeriodModel.findOne({
+      _id: params.periodId,
+      organizationId: params.organizationId,
+    } as any)
+      .select('key')
+      .lean();
+    if (!period) {
+      throw new APIError({
+        STATUS: 404,
+        TITLE: 'PERIOD_NOT_FOUND',
+        MESSAGE: 'Period not found',
+      });
+    }
+
+    const periodLabel = String((period as any).key || params.periodId);
+    const { grouped, deptNameById } = await this.collectDepartmentRoleRows(
+      params.organizationId,
+      params.periodId
+    );
+    const { pdfEntries } = await this.buildZip({
+      organizationId: params.organizationId,
+      periodId: params.periodId,
+      periodLabel,
+      grouped,
+      deptNameById,
+    });
+
+    const filterIds = params.departmentIds?.length
+      ? new Set(params.departmentIds.map(String))
+      : null;
+    const attachmentsSource = filterIds
+      ? pdfEntries.filter((p) => filterIds.has(p.departmentId))
+      : pdfEntries;
+
+    if (!attachmentsSource.length) {
+      throw new APIError({
+        STATUS: 400,
+        TITLE: 'NO_PDFS_FOR_TEST',
+        MESSAGE: 'No department PDFs matched the filter for this period',
+      });
+    }
+
+    const attachments = attachmentsSource.map((p) => ({
+      filename: p.name,
+      content: p.buffer,
+      contentType: 'application/pdf' as const,
+    }));
+
+    await sendEmail({
+      to: params.toEmail,
+      subject: `Your department KPI reports (${periodLabel})`,
+      text: `Your assigned department-wise KPI report PDFs are attached for period ${periodLabel}.`,
+      html: `<p>Your assigned department-wise KPI report PDFs are attached.</p>
+<p>Period: <strong>${periodLabel}</strong></p>
+<p><em>Test send — same template as automatic nodal report mail.</em></p>`,
+      attachments,
+    });
+
+    return {
+      to: params.toEmail,
+      periodLabel,
+      periodId: params.periodId,
+      attachmentCount: attachments.length,
+      departments: attachmentsSource.map((p) => p.departmentName),
+    };
   }
 
   static async generateDepartmentPdf(params: {

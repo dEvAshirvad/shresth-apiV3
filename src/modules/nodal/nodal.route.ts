@@ -33,6 +33,15 @@ router.post(
   NodalHandler.sendInvitationToRestNodals
 );
 
+/** Prefer over send-invitation: auto empId + password + WhatsApp. */
+router.post('/provision-credentials', NodalHandler.provisionCredentials);
+
+/** One-shot: rotate/provision ALL org nodals and return credentials (JSON or ?format=csv). */
+router.post(
+  '/download-all-credentials',
+  NodalHandler.downloadAllCredentials
+);
+
 router.post(
   '/:email/attach-user-id-and-member-id',
   validateRequest({
@@ -43,6 +52,12 @@ router.post(
 );
 
 router.get('/am-i-assigned', NodalHandler.amIAssigned);
+
+router.post(
+  '/:id/reset-password',
+  validateRequest({ params: z.object({ id: z.string() }) }),
+  NodalHandler.resetPassword
+);
 
 router.get('/:id', NodalHandler.getNodal);
 

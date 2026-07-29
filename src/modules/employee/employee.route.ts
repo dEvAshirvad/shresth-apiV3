@@ -31,10 +31,33 @@ router.post(
   EmployeeHandler.importEmployees
 );
 
+/** @deprecated Prefer provision-credentials for new staff pseudo-users. */
 router.post(
   '/sync-from-org-members',
   validateRequest({ body: z.object({ departmentId: z.string() }) }),
   EmployeeHandler.syncFromOrgMembers
+);
+
+/** Prefer over send-invitation: auto empId + password (CSV/UI only). */
+router.post(
+  '/provision-credentials',
+  validateRequest({
+    body: z.object({ departmentId: z.string().optional() }).optional(),
+  }),
+  EmployeeHandler.provisionCredentials
+);
+
+/** One-shot: rotate/provision employees; optional ?departmentId; ?format=csv. */
+router.post(
+  '/download-all-credentials',
+  EmployeeHandler.downloadAllCredentials
+);
+
+/** @deprecated Prefer provision-credentials. */
+router.post(
+  '/send-invitation-to-rest-employees',
+  validateRequest({ body: z.object({ departmentId: z.string() }) }),
+  EmployeeHandler.sendInvitationToRestEmployees
 );
 
 router.post(
@@ -44,6 +67,12 @@ router.post(
     body: attachUserIdMemberIdZodSchema,
   }),
   EmployeeHandler.attachUserIdAndMemberId
+);
+
+router.post(
+  '/:id/reset-password',
+  validateRequest({ params: z.object({ id: z.string() }) }),
+  EmployeeHandler.resetPassword
 );
 
 // GET /api/v1/employee/:id - Get a specific employee
@@ -68,13 +97,6 @@ router.delete(
   '/:id',
   validateRequest({ params: z.object({ id: z.string() }) }),
   EmployeeHandler.deleteEmployee
-);
-
-// POST /api/v1/employee/send-invitation-to-rest-employees - Send invitation to rest employees
-router.post(
-  '/send-invitation-to-rest-employees',
-  validateRequest({ body: z.object({ departmentId: z.string() }) }),
-  EmployeeHandler.sendInvitationToRestEmployees
 );
 
 export default router;

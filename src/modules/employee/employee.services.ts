@@ -18,6 +18,13 @@ import { UserModel } from '../auth/users/users.model';
 import { OrganizationModel } from '../auth/organizations/organizations.model';
 import logger from '@/configs/logger/winston';
 import { z } from 'zod';
+import {
+  provisionEmployeeCredentials,
+  resetEmployeePassword,
+  rotateEmployeePasswordFast,
+  type EmployeeCredentialPayload,
+  type EmployeeCredentialExportRow,
+} from './employee.provision';
 
 export interface InvitationEmployeeError {
   employeeId: string;
@@ -43,7 +50,10 @@ interface EmployeeImportRow {
 }
 
 export class EmployeeService {
-  static async createEmployee(payload: EmployeeDepartmentCreate) {
+  static async createEmployee(
+    payload: EmployeeDepartmentCreate,
+    organizationId: string
+  ) {
     if (!isValidObjectId(payload.department)) {
       throw new APIError({
         STATUS: 400,
@@ -51,8 +61,26 @@ export class EmployeeService {
         MESSAGE: 'Invalid department ID',
       });
     }
+    const dept = await DepartmentModel.findOne({
+      _id: payload.department,
+      organizationId,
+    } as any).lean();
+    if (!dept) {
+      throw new APIError({
+        STATUS: 404,
+        TITLE: 'DEPARTMENT_NOT_FOUND',
+        MESSAGE: 'Department not found in active organization',
+      });
+    }
     const employee = await EmployeeModal.create(payload);
-    return employee;
+    const credentials = await provisionEmployeeCredentials({
+      employeeId: String((employee as any)._id),
+      organizationId,
+    });
+    const refreshed = await EmployeeModal.findById((employee as any)._id)
+      .populate('department')
+      .lean();
+    return { employee: refreshed ?? employee, credentials };
   }
 
   static async getEmployee(id: string) {
@@ -103,6 +131,7 @@ export class EmployeeService {
         { name: { $regex: search, $options: 'i' } },
         { email: { $regex: search, $options: 'i' } },
         { phone: { $regex: search, $options: 'i' } },
+        { empId: { $regex: search, $options: 'i' } },
       ];
     }
 
@@ -144,35 +173,304 @@ export class EmployeeService {
 
   static async importEmployees(
     rows: EmployeeImportRow[],
-    departmentId: string
+    departmentId: string,
+    organizationId: string
   ) {
     if (!rows.length) {
-      return { insertedCount: 0, updatedCount: 0 };
+      return {
+        insertedCount: 0,
+        updatedCount: 0,
+        skippedProvisioned: 0,
+        credentials: [] as EmployeeCredentialPayload[],
+        provisionErrors: [] as Array<{ phone?: string; message: string }>,
+      };
+    }
+
+    if (!isValidObjectId(departmentId) || !isValidObjectId(organizationId)) {
+      throw new APIError({
+        STATUS: 400,
+        TITLE: 'INVALID_IDS',
+        MESSAGE: 'Invalid organization or department id',
+      });
+    }
+
+    const dept = await DepartmentModel.findOne({
+      _id: departmentId,
+      organizationId,
+    } as any).lean();
+    if (!dept) {
+      throw new APIError({
+        STATUS: 404,
+        TITLE: 'DEPARTMENT_NOT_FOUND',
+        MESSAGE: 'Department not found in active organization',
+      });
     }
 
     let insertedCount = 0;
     let updatedCount = 0;
+    let skippedProvisioned = 0;
+    const credentials: EmployeeCredentialPayload[] = [];
+    const provisionErrors: Array<{ phone?: string; message: string }> = [];
 
     for (const row of rows) {
+      const prior = await EmployeeModal.findOne({
+        phone: row.phone,
+      } as any).lean();
+
       const updateDoc: any = {
         name: row.name,
-        email: row.email,
         phone: row.phone,
         department: departmentId,
         departmentRole: row.departmentRole,
       };
+      if (row.email) updateDoc.email = row.email;
 
-      const existing = await EmployeeModal.findOneAndUpdate(
+      const doc = await EmployeeModal.findOneAndUpdate(
         { phone: row.phone } as any,
         { $set: updateDoc },
-        { upsert: true, new: false }
+        { upsert: true, new: true }
       ).lean();
 
-      if (existing) updatedCount += 1;
+      if (prior) updatedCount += 1;
       else insertedCount += 1;
+
+      if ((doc as any)?.userId && (doc as any)?.empId) {
+        skippedProvisioned += 1;
+        continue;
+      }
+
+      try {
+        const creds = await provisionEmployeeCredentials({
+          employeeId: String((doc as any)._id),
+          organizationId,
+        });
+        credentials.push(creds);
+      } catch (err) {
+        provisionErrors.push({
+          phone: row.phone,
+          message: err instanceof Error ? err.message : String(err),
+        });
+      }
     }
 
-    return { insertedCount, updatedCount };
+    return {
+      insertedCount,
+      updatedCount,
+      skippedProvisioned,
+      credentials,
+      provisionErrors,
+    };
+  }
+
+  /** Provision credentials for employees in a department (or all org) lacking userId / empId. */
+  static async provisionCredentialsForOrg(
+    organizationId: string,
+    departmentId?: string
+  ) {
+    if (!isValidObjectId(organizationId)) {
+      throw new APIError({
+        STATUS: 400,
+        TITLE: 'INVALID_ORGANIZATION_ID',
+        MESSAGE: 'Invalid organization id',
+      });
+    }
+
+    let departmentIds: string[];
+    if (departmentId) {
+      if (!isValidObjectId(departmentId)) {
+        throw new APIError({
+          STATUS: 400,
+          TITLE: 'INVALID_DEPARTMENT_ID',
+          MESSAGE: 'Invalid department id',
+        });
+      }
+      const dept = await DepartmentModel.findOne({
+        _id: departmentId,
+        organizationId,
+      } as any)
+        .select('_id')
+        .lean();
+      if (!dept) {
+        throw new APIError({
+          STATUS: 404,
+          TITLE: 'DEPARTMENT_NOT_FOUND',
+          MESSAGE: 'Department not found in active organization',
+        });
+      }
+      departmentIds = [String((dept as any)._id)];
+    } else {
+      departmentIds = (
+        await DepartmentModel.find({ organizationId } as any)
+          .select('_id')
+          .lean()
+      ).map((d: any) => String(d._id));
+    }
+
+    if (!departmentIds.length) {
+      return { credentials: [] as EmployeeCredentialPayload[], errors: [] };
+    }
+
+    const rows = await EmployeeModal.find({
+      department: { $in: departmentIds },
+      $or: [
+        { userId: { $exists: false } },
+        { userId: null },
+        { empId: { $exists: false } },
+        { empId: null },
+        { empId: '' },
+      ],
+    })
+      .limit(500)
+      .lean();
+
+    const credentials: EmployeeCredentialPayload[] = [];
+    const errors: Array<{
+      employeeId: string;
+      phone?: string;
+      message: string;
+    }> = [];
+
+    for (const row of rows) {
+      try {
+        const creds = await provisionEmployeeCredentials({
+          employeeId: String((row as any)._id),
+          organizationId,
+        });
+        credentials.push(creds);
+      } catch (err) {
+        errors.push({
+          employeeId: String((row as any)._id),
+          phone: (row as any).phone,
+          message: err instanceof Error ? err.message : String(err),
+        });
+      }
+    }
+
+    return { credentials, errors };
+  }
+
+  /**
+   * One-shot credential export for employees in org (optional department filter).
+   * Rotates passwords for provisioned rows; provisions unlinked rows.
+   */
+  static async downloadAllCredentialsForOrg(
+    organizationId: string,
+    departmentId?: string
+  ) {
+    if (!isValidObjectId(organizationId)) {
+      throw new APIError({
+        STATUS: 400,
+        TITLE: 'INVALID_ORGANIZATION_ID',
+        MESSAGE: 'Invalid organization id',
+      });
+    }
+
+    let departmentIds: string[];
+    if (departmentId) {
+      if (!isValidObjectId(departmentId)) {
+        throw new APIError({
+          STATUS: 400,
+          TITLE: 'INVALID_DEPARTMENT_ID',
+          MESSAGE: 'Invalid department id',
+        });
+      }
+      const dept = await DepartmentModel.findOne({
+        _id: departmentId,
+        organizationId,
+      } as any)
+        .select('_id')
+        .lean();
+      if (!dept) {
+        throw new APIError({
+          STATUS: 404,
+          TITLE: 'DEPARTMENT_NOT_FOUND',
+          MESSAGE: 'Department not found in active organization',
+        });
+      }
+      departmentIds = [String((dept as any)._id)];
+    } else {
+      departmentIds = (
+        await DepartmentModel.find({ organizationId } as any)
+          .select('_id')
+          .lean()
+      ).map((d: any) => String(d._id));
+    }
+
+    if (!departmentIds.length) {
+      return {
+        credentials: [] as EmployeeCredentialExportRow[],
+        errors: [],
+        total: 0,
+      };
+    }
+
+    const rows = await EmployeeModal.find({
+      department: { $in: departmentIds },
+    })
+      .select('name phone email empId userId memberId')
+      .limit(500)
+      .lean();
+
+    const credentials: EmployeeCredentialExportRow[] = [];
+    const errors: Array<{
+      employeeId: string;
+      phone?: string;
+      message: string;
+    }> = [];
+
+    const CONCURRENCY = 10;
+    let index = 0;
+
+    async function worker() {
+      while (index < rows.length) {
+        const i = index++;
+        const row = rows[i] as any;
+        const employeeId = String(row._id);
+        try {
+          if (row.userId && row.empId) {
+            credentials.push(
+              await rotateEmployeePasswordFast({
+                name: row.name,
+                phone: row.phone,
+                email: row.email,
+                empId: String(row.empId),
+                userId: String(row.userId),
+              })
+            );
+          } else {
+            const full = await provisionEmployeeCredentials({
+              employeeId,
+              organizationId,
+            });
+            credentials.push({
+              name: full.name,
+              phone: full.phone,
+              email: full.email || '',
+              empId: full.empId,
+              password: full.password,
+            });
+          }
+        } catch (err) {
+          errors.push({
+            employeeId,
+            phone: row.phone,
+            message: err instanceof Error ? err.message : String(err),
+          });
+        }
+      }
+    }
+
+    const workers = Array.from(
+      { length: Math.min(CONCURRENCY, Math.max(1, rows.length)) },
+      () => worker()
+    );
+    await Promise.all(workers);
+
+    return { credentials, errors, total: rows.length };
+  }
+
+  static async resetPassword(employeeId: string, organizationId: string) {
+    return resetEmployeePassword({ employeeId, organizationId });
   }
 
   /**

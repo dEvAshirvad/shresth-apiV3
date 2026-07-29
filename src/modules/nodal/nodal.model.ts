@@ -8,6 +8,8 @@ export const nodalZodSchema = z.object({
   name: z.string(),
   email: z.string().email().optional(),
   phone: z.string(),
+  /** Auto-generated login id (Better Auth username). Set on credential provision. */
+  empId: z.string().optional(),
   memberId: z.string().optional(),
   userId: z.string().optional(),
   invitationId: z.string().optional(),
@@ -18,6 +20,7 @@ export const nodalZodSchema = z.object({
 
 export const nodalDepartmentCreateZodSchema = nodalZodSchema.omit({
   id: true,
+  empId: true,
   userId: true,
   memberId: true,
   invitationId: true,
@@ -74,6 +77,13 @@ const nodalSchema = new mongoose.Schema<Nodal>(
       ref: 'invitation',
       required: false,
       default: null,
+    },
+    empId: {
+      type: String,
+      required: false,
+      unique: true,
+      sparse: true,
+      index: true,
     },
     email: {
       type: String,
